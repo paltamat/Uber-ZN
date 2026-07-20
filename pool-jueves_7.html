@@ -1,0 +1,1330 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<title>Pool de los Jueves</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.44.0/tabler-icons.min.css" />
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<style>
+  :root {
+    --bg: #000000;
+    --bg-elevated: #1c1c1e;
+    --bg-elevated-2: #2c2c2e;
+    --border: #38383a;
+    --border-soft: #2c2c2e;
+    --text-primary: #ffffff;
+    --text-secondary: #98989d;
+    --text-tertiary: #636366;
+    --accent: #0a84ff;
+    --accent-soft: rgba(10, 132, 255, 0.16);
+    --success: #30d158;
+    --warning: #ff9f0a;
+    --danger: #ff453a;
+    --ratio-gold: #d4a72c;
+    --radius: 14px;
+    --radius-sm: 10px;
+    --radius-lg: 26px;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  #app { max-width: 560px; margin: 0 auto; padding: 20px 16px 110px; }
+
+  .top-header { padding: 16px 4px 24px; text-align: center; }
+  .top-header .title-pill {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--bg-elevated); border: 1px solid var(--border-soft);
+    border-radius: 999px; padding: 14px 32px;
+  }
+  .top-header .eyebrow {
+    font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 4px;
+  }
+  .top-header h1 { font-size: 34px; font-weight: 800; margin: 0; letter-spacing: -0.02em; }
+  .top-header p { font-size: 13px; color: var(--text-secondary); margin: 6px 0 0; }
+
+  .tabbar {
+    position: fixed; left: 0; right: 0; bottom: 0; width: 100%;
+    height: 78px; z-index: 50;
+  }
+  .tabbar-bg {
+    position: absolute; inset: 0; display: flex; align-items: flex-start;
+    background: #4a4a4c; border-radius: 28px 28px 0 0; overflow: hidden;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-shadow: 0 -8px 24px rgba(0,0,0,0.5);
+  }
+  .tab-side {
+    width: 70px; height: 78px; display: flex; align-items: center; justify-content: center;
+    border: none; background: transparent; cursor: pointer; padding: 0; flex-shrink: 0;
+    transition: background 0.15s ease; box-sizing: border-box;
+  }
+  .tab-spacer { width: 86px; height: 100%; flex-shrink: 0; }
+  .tab-side.outer-left { flex: 1; justify-content: center; border-right: 1px solid rgba(255,255,255,0.12); }
+  .tab-side.outer-right { flex: 1; justify-content: center; border-left: 1px solid rgba(255,255,255,0.12); }
+  .tab-inner-cluster { position: relative; display: flex; align-items: center; height: 78px; flex-shrink: 0; }
+  .tab-side .tab-icon { color: var(--text-secondary); transition: color 0.15s ease; }
+  .tab-side.active { background: var(--accent); }
+  .tab-side.active .tab-icon { color: #ffffff; }
+
+  .tab-icon { display: inline-flex; width: 22px; height: 22px; }
+  .tab-icon svg { width: 100%; height: 100%; display: block; }
+
+  .tab-btn.center {
+    position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+    border: none; background: transparent; cursor: pointer; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .tab-icon-wrap {
+    display: flex; align-items: center; justify-content: center; position: relative;
+    width: 76px; height: 76px; background: #5c5c5f; border-radius: 50%;
+    box-shadow: 0 0 0 5px #6e6e70, 0 8px 16px rgba(0,0,0,0.4);
+    transition: background 0.15s ease;
+  }
+  .tab-btn.center .tab-icon { width: 41px; height: 41px; color: var(--text-secondary); }
+  .tab-btn.center.active .tab-icon-wrap { background: var(--accent); box-shadow: 0 0 0 5px #409cff, 0 8px 16px rgba(0,0,0,0.4); }
+  .tab-btn.center.active .tab-icon { color: #ffffff; }
+
+  .tab-notch {
+    position: absolute; top: 0; width: 43px; height: 78px; pointer-events: none;
+  }
+  .tab-notch.left {
+    left: 70px;
+    clip-path: polygon(0px 0px, 5.48px 0.0px, 4.1px 2.67px, 2.96px 5.33px, 2.01px 8.0px, 1.26px 10.67px, 0.69px 13.33px, 0.29px 16.0px, 0.06px 18.67px, 0.0px 21.33px, 0.1px 24.0px, 0.38px 26.67px, 0.82px 29.33px, 1.43px 32.0px, 2.23px 34.67px, 3.22px 37.33px, 4.43px 40.0px, 5.86px 42.67px, 7.55px 45.33px, 9.53px 48.0px, 11.87px 50.67px, 14.65px 53.33px, 18.02px 56.0px, 22.26px 58.67px, 28.09px 61.33px, 43px 64.0px, 43px 78px, 0px 78px);
+  }
+  .tab-notch.right {
+    left: 113px;
+    clip-path: polygon(43px 0px, 37.52px 0.0px, 38.9px 2.67px, 40.04px 5.33px, 40.99px 8.0px, 41.74px 10.67px, 42.31px 13.33px, 42.71px 16.0px, 42.94px 18.67px, 43.0px 21.33px, 42.9px 24.0px, 42.62px 26.67px, 42.18px 29.33px, 41.57px 32.0px, 40.77px 34.67px, 39.78px 37.33px, 38.57px 40.0px, 37.14px 42.67px, 35.45px 45.33px, 33.47px 48.0px, 31.13px 50.67px, 28.35px 53.33px, 24.98px 56.0px, 20.74px 58.67px, 14.91px 61.33px, 0px 64.0px, 0px 78px, 43px 78px);
+  }
+
+  .card {
+    background: var(--bg-elevated); border: 1px solid var(--border-soft); border-radius: var(--radius);
+    padding: 14px 16px; margin-bottom: 10px;
+  }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .row-start { display: flex; align-items: center; gap: 10px; }
+
+  .avatar {
+    width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; background: var(--accent-soft); color: var(--accent); flex-shrink: 0;
+  }
+  .name { font-size: 15px; font-weight: 600; margin: 0; }
+  .subtext { font-size: 12px; color: var(--text-secondary); margin: 1px 0 0; background: none; border: none; padding: 0; cursor: pointer; text-align: left; }
+
+  .switch {
+    position: relative; width: 46px; height: 28px; border-radius: 14px; background: var(--bg-elevated-2);
+    border: 1px solid var(--border); cursor: pointer; flex-shrink: 0; transition: background 0.15s ease;
+  }
+  .switch.on { background: var(--success); border-color: var(--success); }
+  .switch .knob {
+    position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%;
+    background: #fff; transition: transform 0.15s ease; box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  }
+  .switch.on .knob { transform: translateX(18px); }
+
+  input[type="text"], input[type="time"], input[type="date"] {
+    background: var(--bg-elevated-2); border: 1px solid var(--border); color: var(--text-primary);
+    border-radius: var(--radius-sm); padding: 10px 12px; font-size: 14px; width: 100%;
+    font-family: inherit;
+  }
+  input[type="text"]::placeholder { color: var(--text-tertiary); }
+
+  .btn-primary {
+    width: 100%; background: var(--accent); color: #fff; border: none; border-radius: var(--radius-sm);
+    padding: 14px; font-size: 15px; font-weight: 600; cursor: pointer; display: flex; align-items: center;
+    justify-content: center; gap: 8px; transition: opacity 0.15s ease;
+  }
+  .btn-primary:active { opacity: 0.75; }
+  .btn-secondary {
+    background: transparent; color: var(--text-primary); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 10px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .btn-ghost {
+    background: none; border: none; color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; padding: 0;
+  }
+
+  .pill { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 20px; display: inline-flex; align-items: center; gap: 4px; }
+  .pill-blue { background: var(--accent-soft); color: var(--accent); }
+  .pill-green { background: rgba(48,209,88,0.15); color: var(--success); }
+  .pill-gray { background: var(--bg-elevated-2); color: var(--text-secondary); }
+
+  .stat-row { display: flex; justify-content: space-between; font-size: 12px; margin-top: 10px; color: var(--text-secondary); }
+  .stat-row b { color: var(--text-primary); }
+
+  .map-wrap { border-radius: var(--radius); overflow: hidden; margin: 4px 0 14px; border: 1px solid var(--border-soft); }
+  .car-header { display: flex; align-items: center; gap: 8px; }
+  .car-title { font-size: 15px; font-weight: 700; margin: 0; }
+
+  .route-stop { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 0; color: var(--text-secondary); }
+  .route-time { width: 46px; font-weight: 700; color: var(--text-primary); flex-shrink: 0; }
+  .divider { border-top: 1px solid var(--border-soft); margin: 10px 0; }
+
+  .star-btn { border: none; background: none; padding: 2px; cursor: pointer; color: var(--warning); }
+  .profile-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  @media (min-width: 480px) { .profile-grid { grid-template-columns: 1fr 1fr; } }
+
+  .empty { text-align: center; padding: 40px 16px; color: var(--text-secondary); font-size: 14px; }
+  h2.sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
+
+  .more-btn {
+    position: absolute; top: 12px; right: 12px; background: var(--bg-elevated-2); border: none;
+    color: var(--text-secondary); width: 28px; height: 28px; border-radius: 50%; font-size: 14px;
+    font-weight: 700; cursor: pointer; line-height: 1;
+  }
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center;
+    justify-content: center; z-index: 50; padding: 20px;
+  }
+  .modal-sheet {
+    background: var(--bg-elevated); border: 1px solid var(--border-soft); border-radius: 18px;
+    padding: 20px; width: 100%; max-width: 340px;
+  }
+  .field-label { display: block; font-size: 12px; color: var(--text-secondary); margin: 12px 0 6px; }
+  .modal-sheet label:first-of-type { margin-top: 0; }
+
+  .stat-icon { display: inline-flex; width: 26px; height: 26px; color: var(--text-secondary); flex-shrink: 0; }
+  .stat-icon svg { width: 100%; height: 100%; display: block; }
+</style>
+</head>
+<body>
+<div id="app"><div class="empty">Cargando...</div></div>
+
+<script>
+/* ---------- Datos base ---------- */
+var venue = { name:"Cancha", address:"Parque Norte, Av. Cantilo y Guiraldes, CABA", lat:-34.5440, lng:-58.4500 };
+
+var defaultPlayers = [
+  { id:"sebi", name:"Sebi", group:"B", car:{model:"Peugeot 208", plate:"AB123CD"}, viajesChofer:41, viajesPasajero:89, colectivos:9, ratings:[], address:"San Isidro Labrador 688, Martinez", lat:-34.4895, lng:-58.5050 },
+  { id:"leo", name:"Leo", group:"B", car:{model:"VW Gol", plate:"AC456DE"}, viajesChofer:31, viajesPasajero:67, colectivos:3, ratings:[], address:"San Isidro Labrador 588, Martinez", lat:-34.4893, lng:-58.5052 },
+  { id:"mat", name:"Mat", group:"B", car:{model:"Chevrolet Onix", plate:"AD789FG"}, viajesChofer:31, viajesPasajero:62, colectivos:0, ratings:[], address:"Hernan Wineberg 3829, La Lucila", lat:-34.4989, lng:-58.4922 },
+  { id:"nico", name:"Nico", group:"A", car:{model:"Renault Sandero", plate:"AE012HI"}, viajesChofer:34, viajesPasajero:72, colectivos:4, ratings:[], address:"Manuel A. Aguirre 688, Acassuso", lat:-34.4780, lng:-58.4870 },
+  { id:"guido", name:"Guido", group:"B", car:{model:"Fiat Cronos", plate:"AF345JK"}, viajesChofer:40, viajesPasajero:84, colectivos:4, ratings:[], address:"Libertad 71, Martinez", lat:-34.4830, lng:-58.4880 },
+  { id:"andy", name:"Andy", group:"A", car:{model:"Toyota Etios", plate:"AG678LM"}, viajesChofer:41, viajesPasajero:89, colectivos:6, ratings:[], address:"Alferez Hipolito Bouchard 1431, Olivos", lat:-34.5085, lng:-58.4930 }
+];
+
+var importedHistory = [
+  { fecha:"16/07/2026", dateISO:"2026-07-16", timestamp:1784239200000, drivers:["Sebi"], driverIds:["sebi"], passengers:{"Sebi": ["Mat", "Guido", "Andy", "Leo"]} },
+  { fecha:"09/07/2026", dateISO:"2026-07-09", timestamp:1783634400000, drivers:["Mat", "Nico"], driverIds:["mat", "nico"], passengers:{"Mat": ["Sebi", "Andy"], "Nico": ["Guido", "Leo"]} },
+  { fecha:"02/07/2026", dateISO:"2026-07-02", timestamp:1783029600000, drivers:["Guido"], driverIds:["guido"], passengers:{"Guido": ["Sebi", "Mat", "Nico", "Andy"]} },
+  { fecha:"25/06/2026", dateISO:"2026-06-25", timestamp:1782424800000, drivers:["Mat", "Andy"], driverIds:["mat", "andy"], passengers:{"Mat": ["Sebi", "Guido"], "Andy": ["Nico"]} },
+  { fecha:"11/06/2026", dateISO:"2026-06-11", timestamp:1781215200000, drivers:["Sebi", "Guido"], driverIds:["sebi", "guido"], passengers:{"Sebi": ["Mat", "Andy"], "Guido": ["Nico", "Leo"]} },
+  { fecha:"04/06/2026", dateISO:"2026-06-04", timestamp:1780610400000, drivers:["Nico", "Andy"], driverIds:["nico", "andy"], passengers:{"Nico": ["Sebi", "Guido"], "Andy": ["Mat", "Leo"]} },
+  { fecha:"28/05/2026", dateISO:"2026-05-28", timestamp:1780005600000, drivers:["Mat", "Guido"], driverIds:["mat", "guido"], passengers:{"Mat": ["Sebi", "Andy"], "Guido": ["Nico", "Leo"]} },
+  { fecha:"21/05/2026", dateISO:"2026-05-21", timestamp:1779400800000, drivers:["Andy"], driverIds:["andy"], passengers:{"Andy": ["Sebi", "Nico", "Guido"]} },
+  { fecha:"14/05/2026", dateISO:"2026-05-14", timestamp:1778796000000, drivers:["Sebi"], driverIds:["sebi"], passengers:{"Sebi": ["Nico", "Guido", "Andy", "Leo"]} },
+  { fecha:"07/05/2026", dateISO:"2026-05-07", timestamp:1778191200000, drivers:["Mat", "Nico"], driverIds:["mat", "nico"], passengers:{"Mat": ["Sebi", "Andy"], "Nico": ["Guido"]} },
+  { fecha:"30/04/2026", dateISO:"2026-04-30", timestamp:1777586400000, drivers:["Guido", "Leo"], driverIds:["guido", "leo"], passengers:{"Guido": ["Sebi", "Andy"], "Leo": ["Mat"]} },
+  { fecha:"23/04/2026", dateISO:"2026-04-23", timestamp:1776981600000, drivers:["Andy"], driverIds:["andy"], passengers:{"Andy": ["Mat", "Guido", "Leo"]} },
+  { fecha:"16/04/2026", dateISO:"2026-04-16", timestamp:1776376800000, drivers:["Nico"], driverIds:["nico"], passengers:{"Nico": ["Sebi", "Guido", "Andy"]} },
+  { fecha:"09/04/2026", dateISO:"2026-04-09", timestamp:1775772000000, drivers:["Sebi"], driverIds:["sebi"], passengers:{"Sebi": ["Nico", "Guido", "Andy"]} },
+  { fecha:"02/04/2026", dateISO:"2026-04-02", timestamp:1775167200000, drivers:["Leo"], driverIds:["leo"], passengers:{"Leo": ["Guido", "Andy"]} },
+  { fecha:"26/03/2026", dateISO:"2026-03-26", timestamp:1774562400000, drivers:["Andy"], driverIds:["andy"], passengers:{"Andy": ["Sebi", "Nico"]} },
+  { fecha:"19/03/2026", dateISO:"2026-03-19", timestamp:1773957600000, drivers:["Guido"], driverIds:["guido"], passengers:{"Guido": ["Sebi", "Andy"]} },
+  { fecha:"12/03/2026", dateISO:"2026-03-12", timestamp:1773352800000, drivers:["Sebi"], driverIds:["sebi"], passengers:{"Sebi": ["Guido", "Andy"]} },
+  { fecha:"05/03/2026", dateISO:"2026-03-05", timestamp:1772748000000, drivers:["Andy", "Leo"], driverIds:["andy", "leo"], passengers:{"Andy": ["Sebi", "Nico"], "Leo": ["Mat", "Guido"]} },
+  { fecha:"26/02/2026", dateISO:"2026-02-26", timestamp:1772143200000, drivers:["Nico", "Andy"], driverIds:["nico", "andy"], passengers:{"Nico": ["Mat", "Leo"], "Andy": ["Guido"]} },
+  { fecha:"12/02/2026", dateISO:"2026-02-12", timestamp:1770933600000, drivers:["Sebi", "Guido"], driverIds:["sebi", "guido"], passengers:{"Sebi": ["Mat", "Andy"], "Guido": ["Nico"]} },
+  { fecha:"05/02/2026", dateISO:"2026-02-05", timestamp:1770328800000, drivers:["Mat", "Leo"], driverIds:["mat", "leo"], passengers:{"Mat": ["Sebi", "Guido"], "Leo": ["Nico"]} },
+  { fecha:"29/01/2026", dateISO:"2026-01-29", timestamp:1769724000000, drivers:["Nico"], driverIds:["nico"], passengers:{"Nico": ["Sebi", "Guido", "Andy", "Leo"]} },
+  { fecha:"22/01/2026", dateISO:"2026-01-22", timestamp:1769119200000, drivers:[], driverIds:[], passengers:{} },
+  { fecha:"08/01/2026", dateISO:"2026-01-08", timestamp:1767909600000, drivers:["Guido"], driverIds:["guido"], passengers:{"Guido": ["Sebi", "Andy"]} },
+  { fecha:"18/12/2025", dateISO:"2025-12-18", timestamp:1766095200000, drivers:["Sebi", "Andy"], driverIds:["sebi", "andy"], passengers:{"Sebi": ["Mat", "Guido"], "Andy": ["Nico", "Leo"]} },
+  { fecha:"11/12/2025", dateISO:"2025-12-11", timestamp:1765490400000, drivers:["Guido"], driverIds:["guido"], passengers:{"Guido": ["Sebi", "Nico", "Andy", "Leo"]} },
+  { fecha:"04/12/2025", dateISO:"2025-12-04", timestamp:1764885600000, drivers:["Andy", "Leo"], driverIds:["andy", "leo"], passengers:{"Andy": ["Sebi", "Guido"], "Leo": ["Nico"]} },
+  { fecha:"27/11/2025", dateISO:"2025-11-27", timestamp:1764280800000, drivers:["Sebi", "Guido"], driverIds:["sebi", "guido"], passengers:{"Sebi": ["Mat", "Andy"], "Guido": ["Nico", "Leo"]} },
+  { fecha:"13/11/2025", dateISO:"2025-11-13", timestamp:1763071200000, drivers:["Nico"], driverIds:["nico"], passengers:{"Nico": ["Sebi", "Guido", "Andy", "Leo"]} },
+  { fecha:"06/11/2025", dateISO:"2025-11-06", timestamp:1762466400000, drivers:["Leo"], driverIds:["leo"], passengers:{"Leo": ["Sebi"]} },
+  { fecha:"30/10/2025", dateISO:"2025-10-30", timestamp:1761861600000, drivers:["Sebi"], driverIds:["sebi"], passengers:{"Sebi": ["Guido", "Andy"]} },
+  { fecha:"23/10/2025", dateISO:"2025-10-23", timestamp:1761256800000, drivers:["Andy"], driverIds:["andy"], passengers:{"Andy": ["Sebi", "Nico", "Guido"]} },
+  { fecha:"16/10/2025", dateISO:"2025-10-16", timestamp:1760652000000, drivers:["Guido"], driverIds:["guido"], passengers:{"Guido": ["Sebi", "Andy"]} },
+  { fecha:"09/10/2025", dateISO:"2025-10-09", timestamp:1760047200000, drivers:["Sebi"], driverIds:["sebi"], passengers:{"Sebi": ["Nico", "Guido", "Andy", "Leo"]} },
+  { fecha:"02/10/2025", dateISO:"2025-10-02", timestamp:1759442400000, drivers:["Nico", "Andy"], driverIds:["nico", "andy"], passengers:{"Nico": ["Sebi", "Leo"], "Andy": ["Guido"]} },
+  { fecha:"25/09/2025", dateISO:"2025-09-25", timestamp:1758837600000, drivers:["Guido"], driverIds:["guido"], passengers:{"Guido": ["Sebi", "Mat", "Andy"]} },
+  { fecha:"18/09/2025", dateISO:"2025-09-18", timestamp:1758232800000, drivers:["Sebi", "Mat"], driverIds:["sebi", "mat"], passengers:{"Sebi": ["Nico", "Andy"], "Mat": ["Guido"]} },
+  { fecha:"11/09/2025", dateISO:"2025-09-11", timestamp:1757628000000, drivers:["Andy"], driverIds:["andy"], passengers:{"Andy": ["Mat", "Nico", "Guido"]} },
+  { fecha:"28/08/2025", dateISO:"2025-08-28", timestamp:1756418400000, drivers:["Mat"], driverIds:["mat"], passengers:{"Mat": ["Guido", "Andy", "Leo"]} },
+  { fecha:"21/08/2025", dateISO:"2025-08-21", timestamp:1755813600000, drivers:["Guido", "Leo"], driverIds:["guido", "leo"], passengers:{"Guido": ["Sebi"], "Leo": ["Andy"]} },
+  { fecha:"07/08/2025", dateISO:"2025-08-07", timestamp:1754604000000, drivers:["Guido", "Andy"], driverIds:["guido", "andy"], passengers:{"Guido": ["Sebi", "Nico"], "Andy": ["Mat", "Leo"]} },
+  { fecha:"31/07/2025", dateISO:"2025-07-31", timestamp:1753999200000, drivers:["Sebi"], driverIds:["sebi"], passengers:{"Sebi": ["Nico", "Guido", "Andy", "Leo"]} },
+  { fecha:"24/07/2025", dateISO:"2025-07-24", timestamp:1753394400000, drivers:["Nico", "Leo"], driverIds:["nico", "leo"], passengers:{"Nico": ["Guido"], "Leo": ["Andy"]} },
+  { fecha:"17/07/2025", dateISO:"2025-07-17", timestamp:1752789600000, drivers:["Nico"], driverIds:["nico"], passengers:{"Nico": ["Guido", "Andy", "Leo"]} },
+  { fecha:"10/07/2025", dateISO:"2025-07-10", timestamp:1752184800000, drivers:["Guido", "Andy"], driverIds:["guido", "andy"], passengers:{"Guido": ["Sebi", "Nico"], "Andy": ["Mat", "Leo"]} },
+  { fecha:"26/06/2025", dateISO:"2025-06-26", timestamp:1750975200000, drivers:["Leo"], driverIds:["leo"], passengers:{"Leo": ["Sebi", "Guido", "Andy"]} },
+  { fecha:"19/06/2025", dateISO:"2025-06-19", timestamp:1750370400000, drivers:["Mat", "Guido"], driverIds:["mat", "guido"], passengers:{"Mat": ["Sebi", "Andy"], "Guido": ["Nico", "Leo"]} },
+  { fecha:"12/06/2025", dateISO:"2025-06-12", timestamp:1749765600000, drivers:["Sebi"], driverIds:["sebi"], passengers:{"Sebi": ["Nico", "Guido", "Andy", "Leo"]} },
+  { fecha:"05/06/2025", dateISO:"2025-06-05", timestamp:1749160800000, drivers:["Andy"], driverIds:["andy"], passengers:{"Andy": ["Sebi", "Nico"]} },
+  { fecha:"29/05/2025", dateISO:"2025-05-29", timestamp:1748556000000, drivers:["Leo"], driverIds:["leo"], passengers:{"Leo": ["Sebi", "Mat", "Andy"]} },
+  { fecha:"22/05/2025", dateISO:"2025-05-22", timestamp:1747951200000, drivers:["Andy"], driverIds:["andy"], passengers:{"Andy": ["Sebi", "Mat", "Guido", "Leo"]} },
+  { fecha:"15/05/2025", dateISO:"2025-05-15", timestamp:1747346400000, drivers:["Nico"], driverIds:["nico"], passengers:{"Nico": ["Sebi", "Guido"]} },
+  { fecha:"08/05/2025", dateISO:"2025-05-08", timestamp:1746741600000, drivers:["Sebi", "Guido"], driverIds:["sebi", "guido"], passengers:{"Sebi": ["Nico", "Leo"], "Guido": ["Andy"]} },
+  { fecha:"24/04/2025", dateISO:"2025-04-24", timestamp:1745532000000, drivers:["Nico", "Leo"], driverIds:["nico", "leo"], passengers:{"Nico": ["Mat", "Andy"], "Leo": ["Guido"]} },
+  { fecha:"03/04/2025", dateISO:"2025-04-03", timestamp:1743717600000, drivers:["Mat", "Andy"], driverIds:["mat", "andy"], passengers:{"Mat": ["Sebi", "Guido"], "Andy": ["Nico"]} },
+  { fecha:"27/03/2025", dateISO:"2025-03-27", timestamp:1743112800000, drivers:["Sebi", "Guido"], driverIds:["sebi", "guido"], passengers:{"Sebi": ["Mat", "Andy"], "Guido": ["Nico", "Leo"]} },
+  { fecha:"20/03/2025", dateISO:"2025-03-20", timestamp:1742508000000, drivers:["Mat", "Andy"], driverIds:["mat", "andy"], passengers:{"Mat": ["Sebi", "Leo"], "Andy": ["Guido"]} },
+  { fecha:"13/03/2025", dateISO:"2025-03-13", timestamp:1741903200000, drivers:["Guido", "Leo"], driverIds:["guido", "leo"], passengers:{"Guido": ["Sebi", "Nico"], "Leo": ["Mat", "Andy"]} },
+  { fecha:"06/03/2025", dateISO:"2025-03-06", timestamp:1741298400000, drivers:["Sebi", "Mat"], driverIds:["sebi", "mat"], passengers:{"Sebi": ["Nico", "Andy"], "Mat": ["Guido", "Leo"]} },
+  { fecha:"27/02/2025", dateISO:"2025-02-27", timestamp:1740693600000, drivers:["Nico"], driverIds:["nico"], passengers:{"Nico": ["Sebi", "Mat"]} },
+  { fecha:"20/02/2025", dateISO:"2025-02-20", timestamp:1740088800000, drivers:["Sebi"], driverIds:["sebi"], passengers:{"Sebi": ["Mat"]} },
+  { fecha:"13/02/2025", dateISO:"2025-02-13", timestamp:1739484000000, drivers:["Mat"], driverIds:["mat"], passengers:{"Mat": ["Sebi", "Guido", "Andy"]} },
+  { fecha:"06/02/2025", dateISO:"2025-02-06", timestamp:1738879200000, drivers:["Andy"], driverIds:["andy"], passengers:{"Andy": ["Sebi", "Mat", "Guido"]} },
+  { fecha:"30/01/2025", dateISO:"2025-01-30", timestamp:1738274400000, drivers:["Sebi", "Nico", "Guido"], driverIds:["sebi", "nico", "guido"], passengers:{"Sebi": ["Mat"], "Nico": ["Andy"], "Guido": ["Leo"]} },
+  { fecha:"23/01/2025", dateISO:"2025-01-23", timestamp:1737669600000, drivers:["Andy", "Leo"], driverIds:["andy", "leo"], passengers:{"Andy": ["Sebi", "Guido"], "Leo": ["Nico"]} },
+  { fecha:"09/01/2025", dateISO:"2025-01-09", timestamp:1736460000000, drivers:["Sebi"], driverIds:["sebi"], passengers:{"Sebi": ["Guido", "Andy", "Leo"]} },
+  { fecha:"02/01/2025", dateISO:"2025-01-02", timestamp:1735855200000, drivers:["Mat", "Guido"], driverIds:["mat", "guido"], passengers:{"Mat": ["Sebi", "Andy"], "Guido": ["Nico", "Leo"]} },
+  { fecha:"12/12/2024", dateISO:"2024-12-12", timestamp:1734040800000, drivers:["Guido", "Andy"], driverIds:["guido", "andy"], passengers:{"Guido": ["Sebi", "Nico"], "Andy": ["Mat", "Leo"]} },
+  { fecha:"05/12/2024", dateISO:"2024-12-05", timestamp:1733436000000, drivers:["Sebi", "Nico"], driverIds:["sebi", "nico"], passengers:{"Sebi": ["Mat", "Andy"], "Nico": ["Guido", "Leo"]} },
+  { fecha:"28/11/2024", dateISO:"2024-11-28", timestamp:1732831200000, drivers:["Nico", "Leo"], driverIds:["nico", "leo"], passengers:{"Nico": ["Sebi", "Andy"], "Leo": ["Guido"]} },
+  { fecha:"21/11/2024", dateISO:"2024-11-21", timestamp:1732226400000, drivers:["Guido"], driverIds:["guido"], passengers:{"Guido": ["Sebi", "Nico", "Andy"]} },
+  { fecha:"14/11/2024", dateISO:"2024-11-14", timestamp:1731621600000, drivers:["Andy", "Leo"], driverIds:["andy", "leo"], passengers:{"Andy": ["Sebi", "Guido"], "Leo": ["Nico"]} },
+  { fecha:"31/10/2024", dateISO:"2024-10-31", timestamp:1730412000000, drivers:["Nico"], driverIds:["nico"], passengers:{"Nico": ["Sebi", "Mat", "Guido", "Andy"]} },
+  { fecha:"24/10/2024", dateISO:"2024-10-24", timestamp:1729807200000, drivers:["Sebi"], driverIds:["sebi"], passengers:{"Sebi": ["Mat", "Nico", "Guido", "Andy"]} },
+  { fecha:"17/10/2024", dateISO:"2024-10-17", timestamp:1729202400000, drivers:["Andy"], driverIds:["andy"], passengers:{"Andy": ["Sebi", "Nico", "Guido"]} },
+  { fecha:"03/10/2024", dateISO:"2024-10-03", timestamp:1727992800000, drivers:["Guido"], driverIds:["guido"], passengers:{"Guido": ["Sebi", "Nico", "Andy"]} },
+  { fecha:"26/09/2024", dateISO:"2024-09-26", timestamp:1727388000000, drivers:["Mat", "Nico"], driverIds:["mat", "nico"], passengers:{"Mat": ["Sebi", "Andy"], "Nico": ["Guido", "Leo"]} },
+  { fecha:"19/09/2024", dateISO:"2024-09-19", timestamp:1726783200000, drivers:["Sebi"], driverIds:["sebi"], passengers:{"Sebi": ["Mat", "Nico", "Andy", "Leo"]} },
+  { fecha:"12/09/2024", dateISO:"2024-09-12", timestamp:1726178400000, drivers:["Guido", "Leo"], driverIds:["guido", "leo"], passengers:{"Guido": ["Sebi", "Nico"], "Leo": ["Mat", "Andy"]} },
+  { fecha:"05/09/2024", dateISO:"2024-09-05", timestamp:1725573600000, drivers:["Nico", "Andy"], driverIds:["nico", "andy"], passengers:{"Nico": ["Sebi", "Guido"], "Andy": ["Mat"]} },
+  { fecha:"29/08/2024", dateISO:"2024-08-29", timestamp:1724968800000, drivers:["Sebi", "Andy"], driverIds:["sebi", "andy"], passengers:{"Sebi": ["Mat", "Guido"], "Andy": ["Nico", "Leo"]} },
+  { fecha:"22/08/2024", dateISO:"2024-08-22", timestamp:1724364000000, drivers:["Mat", "Guido"], driverIds:["mat", "guido"], passengers:{"Mat": ["Sebi", "Leo"], "Guido": ["Andy"]} },
+  { fecha:"15/08/2024", dateISO:"2024-08-15", timestamp:1723759200000, drivers:["Mat", "Andy"], driverIds:["mat", "andy"], passengers:{"Mat": ["Sebi", "Guido"], "Andy": ["Nico", "Leo"]} },
+  { fecha:"08/08/2024", dateISO:"2024-08-08", timestamp:1723154400000, drivers:["Leo"], driverIds:["leo"], passengers:{"Leo": ["Sebi", "Mat", "Guido", "Andy"]} },
+  { fecha:"01/08/2024", dateISO:"2024-08-01", timestamp:1722549600000, drivers:["Sebi", "Nico"], driverIds:["sebi", "nico"], passengers:{"Sebi": ["Mat", "Andy"], "Nico": ["Guido", "Leo"]} },
+  { fecha:"25/07/2024", dateISO:"2024-07-25", timestamp:1721944800000, drivers:["Mat"], driverIds:["mat"], passengers:{"Mat": ["Nico", "Guido", "Andy"]} },
+  { fecha:"18/07/2024", dateISO:"2024-07-18", timestamp:1721340000000, drivers:["Mat"], driverIds:["mat"], passengers:{"Mat": ["Sebi", "Andy"]} },
+  { fecha:"11/07/2024", dateISO:"2024-07-11", timestamp:1720735200000, drivers:["Guido"], driverIds:["guido"], passengers:{"Guido": ["Sebi", "Andy", "Leo"]} },
+  { fecha:"27/06/2024", dateISO:"2024-06-27", timestamp:1719525600000, drivers:["Andy"], driverIds:["andy"], passengers:{"Andy": ["Sebi", "Mat", "Nico", "Guido"]} },
+  { fecha:"13/06/2024", dateISO:"2024-06-13", timestamp:1718316000000, drivers:["Sebi"], driverIds:["sebi"], passengers:{"Sebi": ["Mat", "Guido", "Andy", "Leo"]} },
+  { fecha:"06/06/2024", dateISO:"2024-06-06", timestamp:1717711200000, drivers:["Leo"], driverIds:["leo"], passengers:{"Leo": ["Sebi", "Nico", "Guido", "Andy"]} },
+  { fecha:"30/05/2024", dateISO:"2024-05-30", timestamp:1717106400000, drivers:["Guido"], driverIds:["guido"], passengers:{"Guido": ["Sebi", "Mat", "Nico", "Andy"]} },
+  { fecha:"23/05/2024", dateISO:"2024-05-23", timestamp:1716501600000, drivers:["Sebi", "Nico"], driverIds:["sebi", "nico"], passengers:{"Sebi": ["Mat", "Andy"], "Nico": ["Guido", "Leo"]} },
+  { fecha:"16/05/2024", dateISO:"2024-05-16", timestamp:1715896800000, drivers:["Mat", "Andy"], driverIds:["mat", "andy"], passengers:{"Mat": ["Sebi", "Guido"], "Andy": ["Nico", "Leo"]} },
+  { fecha:"02/05/2024", dateISO:"2024-05-02", timestamp:1714687200000, drivers:["Sebi"], driverIds:["sebi"], passengers:{"Sebi": ["Mat"]} },
+  { fecha:"25/04/2024", dateISO:"2024-04-25", timestamp:1714082400000, drivers:["Mat", "Guido"], driverIds:["mat", "guido"], passengers:{"Mat": ["Sebi", "Leo"], "Guido": ["Nico"]} },
+  { fecha:"18/04/2024", dateISO:"2024-04-18", timestamp:1713477600000, drivers:["Sebi", "Leo"], driverIds:["sebi", "leo"], passengers:{"Sebi": ["Mat", "Guido"], "Leo": ["Nico", "Andy"]} },
+  { fecha:"11/04/2024", dateISO:"2024-04-11", timestamp:1712872800000, drivers:["Mat", "Nico"], driverIds:["mat", "nico"], passengers:{"Mat": ["Sebi", "Andy"], "Nico": ["Guido"]} },
+  { fecha:"04/04/2024", dateISO:"2024-04-04", timestamp:1712268000000, drivers:["Guido"], driverIds:["guido"], passengers:{"Guido": ["Sebi", "Mat", "Nico", "Andy"]} },
+  { fecha:"21/03/2024", dateISO:"2024-03-21", timestamp:1711058400000, drivers:["Nico", "Andy"], driverIds:["nico", "andy"], passengers:{"Nico": ["Sebi", "Leo"], "Andy": ["Mat"]} },
+  { fecha:"14/03/2024", dateISO:"2024-03-14", timestamp:1710453600000, drivers:["Sebi", "Mat"], driverIds:["sebi", "mat"], passengers:{"Sebi": ["Nico", "Andy"], "Mat": ["Guido", "Leo"]} },
+  { fecha:"07/03/2024", dateISO:"2024-03-07", timestamp:1709848800000, drivers:["Andy", "Leo"], driverIds:["andy", "leo"], passengers:{"Andy": ["Sebi", "Nico"], "Leo": ["Mat", "Guido"]} },
+  { fecha:"29/02/2024", dateISO:"2024-02-29", timestamp:1709244000000, drivers:["Guido", "Leo"], driverIds:["guido", "leo"], passengers:{"Guido": ["Sebi", "Nico"], "Leo": ["Mat", "Andy"]} },
+  { fecha:"22/02/2024", dateISO:"2024-02-22", timestamp:1708639200000, drivers:["Sebi", "Andy"], driverIds:["sebi", "andy"], passengers:{"Sebi": ["Nico"], "Andy": ["Guido"]} },
+  { fecha:"15/02/2024", dateISO:"2024-02-15", timestamp:1708034400000, drivers:["Nico"], driverIds:["nico"], passengers:{"Nico": ["Sebi"]} },
+  { fecha:"08/02/2024", dateISO:"2024-02-08", timestamp:1707429600000, drivers:["Sebi"], driverIds:["sebi"], passengers:{"Sebi": ["Mat", "Leo"]} },
+  { fecha:"25/01/2024", dateISO:"2024-01-25", timestamp:1706220000000, drivers:["Leo"], driverIds:["leo"], passengers:{"Leo": ["Andy"]} },
+  { fecha:"18/01/2024", dateISO:"2024-01-18", timestamp:1705615200000, drivers:["Guido"], driverIds:["guido"], passengers:{"Guido": ["Sebi", "Andy", "Leo"]} },
+  { fecha:"11/01/2024", dateISO:"2024-01-11", timestamp:1705010400000, drivers:["Mat", "Guido"], driverIds:["mat", "guido"], passengers:{"Mat": ["Nico", "Leo"], "Guido": ["Andy"]} },
+  { fecha:"04/01/2024", dateISO:"2024-01-04", timestamp:1704405600000, drivers:["Sebi", "Nico"], driverIds:["sebi", "nico"], passengers:{"Sebi": ["Mat", "Andy"], "Nico": ["Guido", "Leo"]} },
+  { fecha:"28/12/2023", dateISO:"2023-12-28", timestamp:1703800800000, drivers:["Mat", "Andy"], driverIds:["mat", "andy"], passengers:{"Mat": ["Sebi"], "Andy": ["Guido"]} },
+  { fecha:"14/12/2023", dateISO:"2023-12-14", timestamp:1702591200000, drivers:["Andy", "Leo"], driverIds:["andy", "leo"], passengers:{"Andy": ["Sebi", "Nico"], "Leo": ["Mat", "Guido"]} },
+  { fecha:"30/11/2023", dateISO:"2023-11-30", timestamp:1701381600000, drivers:["Nico"], driverIds:["nico"], passengers:{"Nico": ["Mat"]} },
+  { fecha:"23/11/2023", dateISO:"2023-11-23", timestamp:1700776800000, drivers:["Sebi", "Mat"], driverIds:["sebi", "mat"], passengers:{"Sebi": ["Guido", "Leo"], "Mat": ["Andy"]} },
+  { fecha:"09/11/2023", dateISO:"2023-11-09", timestamp:1699567200000, drivers:["Guido", "Leo"], driverIds:["guido", "leo"], passengers:{"Guido": ["Sebi", "Nico"], "Leo": ["Mat", "Andy"]} },
+  { fecha:"26/10/2023", dateISO:"2023-10-26", timestamp:1698357600000, drivers:["Andy"], driverIds:["andy"], passengers:{"Andy": ["Sebi", "Guido"]} },
+  { fecha:"19/10/2023", dateISO:"2023-10-19", timestamp:1697752800000, drivers:["Mat", "Nico", "Guido"], driverIds:["mat", "nico", "guido"], passengers:{"Mat": ["Sebi"], "Nico": ["Andy"], "Guido": ["Leo"]} },
+  { fecha:"12/10/2023", dateISO:"2023-10-12", timestamp:1697148000000, drivers:["Andy"], driverIds:["andy"], passengers:{"Andy": ["Sebi", "Mat", "Guido"]} },
+  { fecha:"05/10/2023", dateISO:"2023-10-05", timestamp:1696543200000, drivers:["Leo"], driverIds:["leo"], passengers:{"Leo": ["Sebi"]} },
+  { fecha:"28/09/2023", dateISO:"2023-09-28", timestamp:1695938400000, drivers:["Sebi"], driverIds:["sebi"], passengers:{"Sebi": []} },
+  { fecha:"21/09/2023", dateISO:"2023-09-21", timestamp:1695333600000, drivers:["Nico"], driverIds:["nico"], passengers:{"Nico": ["Guido", "Andy", "Leo"]} },
+  { fecha:"14/09/2023", dateISO:"2023-09-14", timestamp:1694728800000, drivers:["Sebi", "Guido"], driverIds:["sebi", "guido"], passengers:{"Sebi": ["Mat", "Andy"], "Guido": ["Nico", "Leo"]} },
+  { fecha:"31/08/2023", dateISO:"2023-08-31", timestamp:1693519200000, drivers:["Andy"], driverIds:["andy"], passengers:{"Andy": ["Sebi", "Nico", "Guido", "Leo"]} },
+  { fecha:"24/08/2023", dateISO:"2023-08-24", timestamp:1692914400000, drivers:["Leo"], driverIds:["leo"], passengers:{"Leo": ["Sebi", "Guido", "Andy"]} },
+  { fecha:"10/08/2023", dateISO:"2023-08-10", timestamp:1691704800000, drivers:["Sebi", "Nico"], driverIds:["sebi", "nico"], passengers:{"Sebi": ["Mat", "Andy"], "Nico": ["Guido", "Leo"]} },
+  { fecha:"03/08/2023", dateISO:"2023-08-03", timestamp:1691100000000, drivers:["Mat", "Guido"], driverIds:["mat", "guido"], passengers:{"Mat": ["Sebi", "Andy"], "Guido": ["Nico"]} },
+  { fecha:"27/07/2023", dateISO:"2023-07-27", timestamp:1690495200000, drivers:["Sebi", "Andy"], driverIds:["sebi", "andy"], passengers:{"Sebi": ["Mat", "Guido"], "Andy": ["Nico", "Leo"]} },
+  { fecha:"20/07/2023", dateISO:"2023-07-20", timestamp:1689890400000, drivers:["Mat", "Nico"], driverIds:["mat", "nico"], passengers:{"Mat": ["Sebi", "Andy"], "Nico": ["Guido", "Leo"]} },
+  { fecha:"13/07/2023", dateISO:"2023-07-13", timestamp:1689285600000, drivers:["Andy"], driverIds:["andy"], passengers:{"Andy": ["Sebi", "Guido", "Leo"]} },
+  { fecha:"29/06/2023", dateISO:"2023-06-29", timestamp:1688076000000, drivers:["Leo"], driverIds:["leo"], passengers:{"Leo": ["Sebi"]} },
+  { fecha:"22/06/2023", dateISO:"2023-06-22", timestamp:1687471200000, drivers:["Leo"], driverIds:["leo"], passengers:{"Leo": ["Sebi", "Mat", "Nico", "Guido"]} },
+  { fecha:"15/06/2023", dateISO:"2023-06-15", timestamp:1686866400000, drivers:["Guido", "Leo"], driverIds:["guido", "leo"], passengers:{"Guido": ["Sebi", "Nico"], "Leo": ["Mat", "Andy"]} },
+  { fecha:"08/06/2023", dateISO:"2023-06-08", timestamp:1686261600000, drivers:["Andy"], driverIds:["andy"], passengers:{"Andy": ["Sebi", "Nico", "Guido", "Leo"]} },
+  { fecha:"01/06/2023", dateISO:"2023-06-01", timestamp:1685656800000, drivers:["Leo"], driverIds:["leo"], passengers:{"Leo": ["Nico", "Andy"]} },
+  { fecha:"25/05/2023", dateISO:"2023-05-25", timestamp:1685052000000, drivers:["Nico"], driverIds:["nico"], passengers:{"Nico": ["Guido", "Leo"]} },
+  { fecha:"18/05/2023", dateISO:"2023-05-18", timestamp:1684447200000, drivers:["Mat", "Leo"], driverIds:["mat", "leo"], passengers:{"Mat": ["Sebi", "Guido"], "Leo": ["Nico", "Andy"]} },
+  { fecha:"11/05/2023", dateISO:"2023-05-11", timestamp:1683842400000, drivers:["Sebi", "Guido"], driverIds:["sebi", "guido"], passengers:{"Sebi": ["Mat", "Andy"], "Guido": ["Nico", "Leo"]} },
+  { fecha:"27/04/2023", dateISO:"2023-04-27", timestamp:1682632800000, drivers:["Nico"], driverIds:["nico"], passengers:{"Nico": ["Sebi", "Mat", "Andy", "Leo"]} },
+  { fecha:"20/04/2023", dateISO:"2023-04-20", timestamp:1682028000000, drivers:["Mat", "Guido"], driverIds:["mat", "guido"], passengers:{"Mat": ["Sebi", "Andy"], "Guido": ["Nico", "Leo"]} },
+  { fecha:"13/04/2023", dateISO:"2023-04-13", timestamp:1681423200000, drivers:["Andy"], driverIds:["andy"], passengers:{"Andy": ["Sebi", "Mat", "Nico", "Leo"]} },
+  { fecha:"06/04/2023", dateISO:"2023-04-06", timestamp:1680818400000, drivers:["Sebi", "Nico"], driverIds:["sebi", "nico"], passengers:{"Sebi": ["Mat"], "Nico": ["Leo"]} },
+  { fecha:"30/03/2023", dateISO:"2023-03-30", timestamp:1680213600000, drivers:["Nico", "Guido"], driverIds:["nico", "guido"], passengers:{"Nico": ["Sebi", "Andy"], "Guido": ["Mat", "Leo"]} },
+  { fecha:"16/03/2023", dateISO:"2023-03-16", timestamp:1679004000000, drivers:["Sebi", "Mat"], driverIds:["sebi", "mat"], passengers:{"Sebi": ["Nico", "Andy"], "Mat": ["Guido", "Leo"]} },
+  { fecha:"09/03/2023", dateISO:"2023-03-09", timestamp:1678399200000, drivers:["Sebi"], driverIds:["sebi"], passengers:{"Sebi": ["Mat", "Nico", "Guido", "Andy"]} },
+  { fecha:"02/03/2023", dateISO:"2023-03-02", timestamp:1677794400000, drivers:["Andy"], driverIds:["andy"], passengers:{"Andy": ["Sebi", "Mat", "Nico", "Guido"]} }
+];
+
+/* ---------- Firebase (datos compartidos entre los 6) ---------- */
+/* 1. Cree un proyecto gratis en https://console.firebase.google.com
+   2. Cree una base de datos Firestore (modo produccion o prueba)
+   3. En "Configuracion del proyecto" > "Tus apps" > Web, copie el config y pongalo aca abajo
+   4. Suba este mismo archivo a Firebase Hosting (o el server que use) */
+var firebaseConfig = {
+  apiKey: "AIzaSyAoizEPM8YX_GDtsr2RDpVinWZ-1H6oRIo",
+  authDomain: "uber-zona-norte.firebaseapp.com",
+  projectId: "uber-zona-norte",
+  storageBucket: "uber-zona-norte.firebasestorage.app",
+  messagingSenderId: "457678654900",
+  appId: "1:457678654900:web:b7e765b27c75be7aa736e1"
+};
+
+var FIREBASE_ENABLED = firebaseConfig.apiKey !== "TU_API_KEY";
+var docRef = null;
+if (FIREBASE_ENABLED) {
+  firebase.initializeApp(firebaseConfig);
+  docRef = firebase.firestore().collection("pool-jueves").doc("shared-state");
+}
+
+var STORAGE_KEY = "pool_jueves_state_v2";
+
+function loadState(){
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) { return null; }
+}
+function saveState(){
+  if (FIREBASE_ENABLED) {
+    docRef.set({ players: players, poolHistory: poolHistory, venue: venue }).catch(function(e){
+      console.error("Error guardando en Firestore:", e);
+    });
+    return;
+  }
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ players: players, poolHistory: poolHistory, venue: venue }));
+  } catch (e) { /* almacenamiento no disponible */ }
+}
+
+var CURRENT_USER_KEY = "pool_jueves_current_user";
+function loadCurrentUser(){
+  try { return localStorage.getItem(CURRENT_USER_KEY) || null; } catch (e) { return null; }
+}
+function saveCurrentUser(id){
+  try {
+    if (id) localStorage.setItem(CURRENT_USER_KEY, id);
+    else localStorage.removeItem(CURRENT_USER_KEY);
+  } catch (e) { /* almacenamiento no disponible */ }
+}
+
+var saved = FIREBASE_ENABLED ? null : loadState();
+if (saved && saved.venue) { venue = Object.assign(venue, saved.venue); }
+var players = (saved && saved.players) ? saved.players : defaultPlayers;
+var poolHistory = (saved && saved.poolHistory) ? saved.poolHistory : importedHistory;
+var currentUserId = loadCurrentUser();
+
+var confirmed = {};
+players.forEach(function(p){ confirmed[p.id] = true; });
+var result = null;
+var ratingsInput = {};
+var weekSaved = false;
+var activeTab = "semana";
+var enCamino = {};
+var carColors = ["#0A84FF", "#FF9F0A"];
+var editingProfileId = null;
+var viewingRatingsId = null;
+var editingHistoryDate = null;
+
+function pad2(n){ return (n < 10 ? "0" : "") + n; }
+function toISODate(d){ return d.getFullYear() + "-" + pad2(d.getMonth()+1) + "-" + pad2(d.getDate()); }
+function isoToDisplay(iso){ var parts = iso.split("-"); return parts[2] + "/" + parts[1] + "/" + parts[0]; }
+function getUpcomingThursday(now){
+  var day = now.getDay();
+  var hour = now.getHours();
+  var diff;
+  if (day === 4) { diff = 0; }
+  else if (day === 5) { diff = (hour < 7) ? -1 : 6; }
+  else if (day === 6) { diff = 5; }
+  else { diff = (4 - day + 7) % 7; }
+  var d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  d.setDate(d.getDate() + diff);
+  return d;
+}
+var matchDateISO = toISODate(getUpcomingThursday(new Date()));
+var matchTime = "21:45";
+
+/* ---------- Utilidades ---------- */
+function ratioDe(p){
+  var efectivos = p.viajesChofer + Math.floor(p.colectivos * 0.5);
+  return p.viajesPasajero === 0 ? efectivos : efectivos / p.viajesPasajero;
+}
+function promedio(arr){ return arr.length ? arr.reduce(function(a,b){return a+b;},0)/arr.length : null; }
+function distKm(a,b){
+  var R=6371;
+  var dLat=(b.lat-a.lat)*Math.PI/180;
+  var dLng=(b.lng-a.lng)*Math.PI/180;
+  var la1=a.lat*Math.PI/180, la2=b.lat*Math.PI/180;
+  var h=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(la1)*Math.cos(la2)*Math.sin(dLng/2)*Math.sin(dLng/2);
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+function parseTime(t){ var parts=t.split(":"); return parseInt(parts[0],10)*60+parseInt(parts[1],10); }
+function formatTime(mins){ mins=Math.round(mins); var h=Math.floor(mins/60)%24; var m=mins%60; if(h<0)h+=24; return (h<10?"0":"")+h+":"+(m<10?"0":"")+m; }
+
+function computeRoute(driver, passengers){
+  var speed=28, stopMin=2;
+  var current = { lat: driver.lat, lng: driver.lng };
+  var remaining = passengers.slice();
+  var relative = 0;
+  var legs = [];
+  while (remaining.length){
+    var nearestIdx=0, nearestDist=Infinity;
+    remaining.forEach(function(p,idx){ var d=distKm(current,p); if(d<nearestDist){nearestDist=d;nearestIdx=idx;} });
+    var next = remaining[nearestIdx];
+    relative += nearestDist/speed*60;
+    legs.push({ name: next.name, address: next.address, arrivalRelative: relative, lat:next.lat, lng:next.lng });
+    relative += stopMin;
+    current = { lat: next.lat, lng: next.lng };
+    remaining.splice(nearestIdx,1);
+  }
+  var toVenue = distKm(current, venue)/speed*60;
+  relative += toVenue;
+  legs.push({ name: venue.name, address: venue.address, arrivalRelative: relative, lat:venue.lat, lng:venue.lng });
+  var matchMin = parseTime(matchTime);
+  var plannedDepartureMin = matchMin - relative;
+  return { plannedDepartureMin: plannedDepartureMin, legs: legs };
+}
+
+/* ---------- Acciones ---------- */
+function lastDriveDateOf(p){
+  for (var i = 0; i < poolHistory.length; i++){
+    var h = poolHistory[i];
+    if (h.driverIds && h.driverIds.indexOf(p.id) !== -1) return h.dateISO || "";
+  }
+  return "";
+}
+
+function calcularSemana(){
+  var conf = players.filter(function(p){ return confirmed[p.id]; });
+  if (conf.length < 2){ result = { error: "Necesitas al menos 2 confirmados para armar el pool." }; render(); return; }
+  var ordenados = conf.slice().sort(function(a,b){
+    var diff = ratioDe(a) - ratioDe(b);
+    if (diff !== 0) return diff;
+    var lastA = lastDriveDateOf(a), lastB = lastDriveDateOf(b);
+    if (lastA < lastB) return -1;
+    if (lastA > lastB) return 1;
+    return 0;
+  });
+  var dosAutos = conf.length === 6;
+  var drivers = dosAutos ? [ordenados[0], ordenados[1]] : [ordenados[0]];
+  var cars;
+  if (!dosAutos){
+    cars = [{ driver: drivers[0], passengers: conf.filter(function(p){ return p.id !== drivers[0].id; }) }];
+  } else {
+    var driverIds = drivers.map(function(d){ return d.id; });
+    var remaining = conf.filter(function(p){ return driverIds.indexOf(p.id) === -1; });
+    var bucketA = remaining.filter(function(p){ return p.group==="A"; });
+    var bucketB = remaining.filter(function(p){ return p.group==="B"; });
+    var c0 = { driver: drivers[0], passengers: [] };
+    var c1 = { driver: drivers[1], passengers: [] };
+    var buckets = [bucketB, bucketA].sort(function(x,y){ return y.length-x.length; });
+    buckets.forEach(function(bucket){
+      var target = c0.passengers.length <= c1.passengers.length ? c0 : c1;
+      target.passengers = target.passengers.concat(bucket);
+    });
+    cars = [c0, c1];
+  }
+  result = { cars: cars.map(function(c){ return Object.assign({}, c, { colectivo: c.passengers.length === 4, route: computeRoute(c.driver, c.passengers) }); }) };
+  ratingsInput = {};
+  weekSaved = false;
+  enCamino = {};
+  render();
+  setTimeout(function(){
+    var mapEl = document.querySelector(".map-wrap");
+    if (mapEl) mapEl.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, 50);
+}
+
+function guardarSemana(){
+  if (!result || result.error) return;
+  var histEntry = {
+    fecha: isoToDisplay(matchDateISO),
+    dateISO: matchDateISO,
+    timestamp: Date.now(),
+    drivers: result.cars.map(function(c){return c.driver.name;}),
+    driverIds: result.cars.map(function(c){return c.driver.id;}),
+    passengers: {}
+  };
+  result.cars.forEach(function(c){ histEntry.passengers[c.driver.name] = c.passengers.map(function(p){return p.name;}); });
+  poolHistory = [histEntry].concat(poolHistory);
+
+  players = players.map(function(p){
+    var asDriver = result.cars.filter(function(c){ return c.driver.id === p.id; })[0];
+    var asPassenger = result.cars.filter(function(c){ return c.passengers.some(function(x){ return x.id === p.id; }); })[0];
+    if (asDriver){
+      var nuevoColectivo = asDriver.colectivo ? p.colectivos + 1 : p.colectivos;
+      return Object.assign({}, p, { viajesChofer: p.viajesChofer + 1, colectivos: nuevoColectivo });
+    }
+    if (asPassenger){ return Object.assign({}, p, { viajesPasajero: p.viajesPasajero + 1 }); }
+    return p;
+  });
+  weekSaved = true;
+  saveState();
+  render();
+}
+
+function getCalificarEntry(){
+  var now = new Date();
+  var day = now.getDay();
+  var diffBack = (day - 4 + 7) % 7;
+  var lastThu = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  lastThu.setDate(lastThu.getDate() - diffBack);
+  var fridayMidnight = new Date(lastThu.getFullYear(), lastThu.getMonth(), lastThu.getDate() + 1);
+  if (now < fridayMidnight) return null;
+  var iso = toISODate(lastThu);
+  var entry = poolHistory.filter(function(h){ return h.dateISO === iso && h.driverIds && h.driverIds.length; })[0];
+  if (!entry) return null;
+  var hasVoted = !!(currentUserId && entry.votedBy && entry.votedBy.indexOf(currentUserId) !== -1);
+  var cutoff = hasVoted
+    ? new Date(fridayMidnight.getTime() + 5 * 60 * 60 * 1000)
+    : new Date(lastThu.getFullYear(), lastThu.getMonth(), lastThu.getDate() + 7);
+  if (now >= cutoff) return null;
+  return entry;
+}
+
+function submitRating(driverId, n){
+  ratingsInput[driverId] = n;
+  players = players.map(function(p){ return p.id === driverId ? Object.assign({}, p, { ratings: p.ratings.concat([n]) }) : p; });
+  var entry = getCalificarEntry();
+  if (entry){
+    if (!entry.votedBy) entry.votedBy = [];
+    if (currentUserId && entry.votedBy.indexOf(currentUserId) === -1) entry.votedBy.push(currentUserId);
+  }
+  saveState();
+  render();
+}
+
+function toggleConfirm(id){ confirmed[id] = !confirmed[id]; result = null; weekSaved = false; render(); }
+function toggleGroup(id){ players = players.map(function(p){ return p.id===id ? Object.assign({}, p, { group: p.group==="A"?"B":"A" }) : p; }); saveState(); render(); }
+function setRating(driverId, n){ ratingsInput[driverId] = n; render(); }
+function setTab(t){ activeTab = t; render(); }
+function setMatchDate(v){ matchDateISO = v; render(); }
+function setMatchTime(v){ matchTime = v; if(result && result.cars){ result.cars.forEach(function(c){ c.route = computeRoute(c.driver, c.passengers); }); } render(); }
+function updateCar(id, field, value){ players = players.map(function(p){ if (p.id!==id) return p; var car = Object.assign({}, p.car); car[field] = value; return Object.assign({}, p, { car: car }); }); saveState(); showToast("Guardado"); }
+function updateAddress(id, value){ players = players.map(function(p){ return p.id===id ? Object.assign({}, p, { address: value }) : p; }); saveState(); showToast("Guardado"); }
+
+function updatePhoto(id, dataUrl){
+  players = players.map(function(p){ return p.id===id ? Object.assign({}, p, { photo: dataUrl }) : p; });
+  saveState();
+  showToast("Foto actualizada");
+  render();
+}
+function removePhoto(id){
+  players = players.map(function(p){ if (p.id!==id) return p; var np = Object.assign({}, p); delete np.photo; return np; });
+  saveState();
+  showToast("Foto eliminada");
+  render();
+}
+function handlePhotoUpload(id, input){
+  var file = input.files && input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e){
+    var img = new Image();
+    img.onload = function(){
+      var size = 240;
+      var canvas = document.createElement("canvas");
+      canvas.width = size; canvas.height = size;
+      var ctx = canvas.getContext("2d");
+      var side = Math.min(img.width, img.height);
+      var sx = (img.width - side) / 2, sy = (img.height - side) / 2;
+      ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+      var dataUrl = canvas.toDataURL("image/jpeg", 0.75);
+      updatePhoto(id, dataUrl);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+function showToast(msg){
+  var el = document.getElementById("toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "toast";
+    el.style.cssText = "position:fixed;bottom:96px;left:50%;transform:translateX(-50%);background:#2c2c2e;color:#fff;padding:10px 18px;border-radius:999px;font-size:13px;z-index:60;opacity:0;transition:opacity 0.2s ease;box-shadow:0 6px 16px rgba(0,0,0,0.4);";
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.opacity = "1";
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(function(){ el.style.opacity = "0"; }, 1600);
+}
+function setCurrentUser(id){ currentUserId = id; saveCurrentUser(id); render(); }
+function changeCurrentUser(){ currentUserId = null; saveCurrentUser(null); render(); }
+function avisarEnCamino(id){ var now = new Date(); enCamino[id] = now.getHours()*60 + now.getMinutes(); render(); }
+function openEditProfile(id){ editingProfileId = id; render(); }
+function closeEditProfile(){ editingProfileId = null; render(); }
+
+function addPlayer(){
+  var name = prompt("Nombre del nuevo jugador:");
+  if (!name) return;
+  var id = name.toLowerCase().replace(/[^a-z0-9]/g, "") + "_" + Date.now();
+  players = players.concat([{ id:id, name:name.trim(), group:"B", car:{model:"Sin auto", plate:"-"}, viajesChofer:0, viajesPasajero:0, colectivos:0, ratings:[], address:"Sin direccion", lat:venue.lat, lng:venue.lng }]);
+  confirmed[id] = true;
+  saveState();
+  render();
+}
+function removePlayer(id){
+  var p = players.filter(function(x){ return x.id === id; })[0];
+  if (!p) return;
+  if (!confirm("Seguro que queres sacar a " + p.name + " del pool? Se pierde su historial.")) return;
+  players = players.filter(function(x){ return x.id !== id; });
+  delete confirmed[id];
+  saveState();
+  render();
+}
+function updateVenue(field, value){
+  venue[field] = value;
+  saveState();
+  showToast("Guardado");
+}
+function exportBackup(){
+  var data = JSON.stringify({ players: players, poolHistory: poolHistory, venue: venue }, null, 2);
+  var blob = new Blob([data], { type: "application/json" });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = "pool-jueves-backup.json";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function importBackup(input){
+  var file = input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e){
+    try {
+      var data = JSON.parse(e.target.result);
+      if (data.players) players = data.players;
+      if (data.poolHistory) poolHistory = data.poolHistory;
+      if (data.venue) venue = Object.assign(venue, data.venue);
+      players.forEach(function(p){ if (!(p.id in confirmed)) confirmed[p.id] = true; });
+      saveState();
+      render();
+      alert("Backup restaurado con exito.");
+    } catch (err) {
+      alert("El archivo no parece un backup valido.");
+    }
+  };
+  reader.readAsText(file);
+}
+function resetAllData(){
+  if (!confirm("Esto borra todos los ratios, estrellas e historial. No se puede deshacer. Continuar?")) return;
+  players = players.map(function(p){ return Object.assign({}, p, { viajesChofer:0, viajesPasajero:0, colectivos:0, ratings:[] }); });
+  poolHistory = [];
+  saveState();
+  render();
+}
+function saveEditProfile(id){
+  var name = document.getElementById("edit-name").value.trim();
+  var model = document.getElementById("edit-model").value.trim();
+  var plate = document.getElementById("edit-plate").value.trim();
+  var address = document.getElementById("edit-address").value.trim();
+  players = players.map(function(p){
+    if (p.id !== id) return p;
+    return Object.assign({}, p, { name: name || p.name, address: address || p.address, car: { model: model || p.car.model, plate: plate || p.car.plate } });
+  });
+  saveState();
+  editingProfileId = null;
+  render();
+}
+
+/* ---------- Render: tabs ---------- */
+function tabsBar(){
+  var stats = activeTab === "estadisticas";
+  var perfiles = activeTab === "perfiles";
+  var uber = activeTab === "semana";
+  var historial = activeTab === "historial";
+  var ajustes = activeTab === "ajustes";
+  var html = '<div class="tabbar">';
+  html += '<div class="tabbar-bg">';
+  html += '<button class="tab-side outer-left ' + (perfiles ? "active" : "") + '" onclick="setTab(\'perfiles\')" aria-label="Perfiles"><span class="tab-icon">' + ICON_PERSON + '</span></button>';
+  html += '<div class="tab-inner-cluster">';
+  html += '<button class="tab-side ' + (stats ? "active" : "") + '" onclick="setTab(\'estadisticas\')" aria-label="Estadisticas"><span class="tab-icon">' + ICON_CHART + '</span></button>';
+  html += '<div class="tab-notch left" style="background:' + (stats ? "#0A84FF" : "#4a4a4c") + ';"></div>';
+  html += '<div class="tab-spacer"></div>';
+  html += '<div class="tab-notch right" style="background:' + (historial ? "#0A84FF" : "#4a4a4c") + ';"></div>';
+  html += '<button class="tab-side ' + (historial ? "active" : "") + '" onclick="setTab(\'historial\')" aria-label="Historial"><span class="tab-icon">' + ICON_HISTORY + '</span></button>';
+  html += '</div>';
+  html += '<button class="tab-side outer-right ' + (ajustes ? "active" : "") + '" onclick="setTab(\'ajustes\')" aria-label="Ajustes"><span class="tab-icon">' + ICON_GEAR + '</span></button>';
+  html += '</div>';
+  html += '<button class="tab-btn center ' + (uber ? "active" : "") + '" onclick="setTab(\'semana\')" aria-label="Uber">' +
+    '<span class="tab-icon-wrap"><span class="tab-icon">' + ICON_CAR_FRONT + '</span></span>' +
+  '</button>';
+  html += '</div>';
+  return html;
+}
+
+function avatarHtml(p, size, fontSize, customColor){
+  if (p.photo) {
+    return '<div style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;background-image:url(\'' + p.photo + '\');background-size:cover;background-position:center;flex-shrink:0;"></div>';
+  }
+  var colorStyle = customColor ? customColor : "";
+  return '<div class="avatar" style="width:' + size + 'px;height:' + size + 'px;font-size:' + fontSize + 'px;' + colorStyle + '">' + p.name.slice(0,2).toUpperCase() + '</div>';
+}
+
+function playerCardMini(p){
+  var ratio = ratioDe(p);
+  var on = confirmed[p.id];
+  return '<div class="card row">' +
+    '<div class="row-start">' +
+      avatarHtml(p, 34, 12) +
+      '<div><p class="name">' + p.name + '</p><p class="subtext" style="cursor:default;">Ratio <span style="font-weight:700;color:' + ratioColor(ratio) + ';">' + formatRatio(ratio) + '</span></p></div>' +
+    '</div>' +
+    '<div class="switch ' + (on?"on":"") + '" onclick="toggleConfirm(\'' + p.id + '\')"><div class="knob"></div></div>' +
+  '</div>';
+}
+
+function routeBlock(c, color){
+  var route = c.route;
+  var real = enCamino[c.driver.id];
+  var base = (real !== undefined) ? real : route.plannedDepartureMin;
+  var stops = route.legs.map(function(l,i){
+    var isVenue = i === route.legs.length - 1;
+    var arrival = formatTime(base + l.arrivalRelative);
+    return '<div class="route-stop">' +
+      '<span class="route-time" style="color:' + color + ';">' + arrival + '</span>' +
+      '<i class="ti ti-' + (isVenue ? "flag-3" : "map-pin") + '"></i>' +
+      '<span>' + l.name + (isVenue ? "" : " &middot; " + l.address) + '</span>' +
+    '</div>';
+  }).join("");
+  var headerLabel = (real !== undefined)
+    ? '<span class="pill pill-green"><i class="ti ti-circle-check"></i>Salio a las ' + formatTime(real) + '</span>'
+    : '<span class="pill pill-gray">Plan: sale a las ' + formatTime(route.plannedDepartureMin) + '</span>';
+  return '<div class="divider"></div><div style="margin-bottom:6px;">' + headerLabel + '</div>' + stops;
+}
+
+function carBlock(c, i){
+  var color = carColors[i % carColors.length];
+  var badge = c.colectivo ? '<span class="pill pill-blue"><i class="ti ti-bus"></i>colectivo</span>' : "";
+  var estado = enCamino[c.driver.id] !== undefined
+    ? ""
+    : '<button class="btn-secondary" onclick="avisarEnCamino(\'' + c.driver.id + '\')">En Camino</button>';
+  return '<div class="card">' +
+    '<div class="car-header">' +
+      '<i class="ti ti-car" style="font-size:18px;color:' + color + ';"></i>' +
+      '<p class="car-title">Auto ' + (i+1) + ': ' + c.driver.name + '</p>' +
+      '<div style="margin-left:auto;display:flex;gap:6px;align-items:center;">' + badge + estado + '</div>' +
+    '</div>' +
+    '<p style="font-size:13px;color:var(--text-secondary);margin:6px 0 0;"><i class="ti ti-users"></i> ' + (c.passengers.length ? c.passengers.map(function(p){return p.name;}).join(", ") : "sin pasajeros") + '</p>' +
+    routeBlock(c, color) +
+  '</div>';
+}
+
+function mapSvg(cars){
+  var points = [{lat:venue.lat,lng:venue.lng}];
+  cars.forEach(function(c){ points.push({lat:c.driver.lat,lng:c.driver.lng}); c.passengers.forEach(function(p){ points.push({lat:p.lat,lng:p.lng}); }); });
+  var lats = points.map(function(p){return p.lat;}), lngs = points.map(function(p){return p.lng;});
+  var minLat=Math.min.apply(null,lats), maxLat=Math.max.apply(null,lats);
+  var minLng=Math.min.apply(null,lngs), maxLng=Math.max.apply(null,lngs);
+  var padLat=(maxLat-minLat)*0.15 || 0.005, padLng=(maxLng-minLng)*0.15 || 0.005;
+  minLat-=padLat; maxLat+=padLat; minLng-=padLng; maxLng+=padLng;
+  var W=520,H=320;
+  function xy(p){ var x=(p.lng-minLng)/(maxLng-minLng)*W; var y=(1-(p.lat-minLat)/(maxLat-minLat))*H; return [x,y]; }
+  var svg = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block;background:#0d0d0f;">';
+  cars.forEach(function(c,ci){
+    var color = carColors[ci % carColors.length];
+    var order = [{lat:c.driver.lat,lng:c.driver.lng}].concat(c.route.legs.map(function(l){return {lat:l.lat,lng:l.lng};}));
+    var d = "";
+    order.forEach(function(pt,idx){ var xy2=xy(pt); d += (idx===0?"M":"L") + xy2[0] + " " + xy2[1] + " "; });
+    svg += '<path d="'+d+'" fill="none" stroke="'+color+'" stroke-width="2" stroke-dasharray="5,4" opacity="0.85" />';
+  });
+  var vxy = xy(venue);
+  svg += '<circle cx="'+vxy[0]+'" cy="'+vxy[1]+'" r="7" fill="#8E8E93" />';
+  svg += '<text x="'+(vxy[0]+10)+'" y="'+(vxy[1]+4)+'" font-size="11" fill="#98989d">Cancha</text>';
+  cars.forEach(function(c,ci){
+    var color = carColors[ci % carColors.length];
+    var dxy = xy(c.driver);
+    svg += '<circle cx="'+dxy[0]+'" cy="'+dxy[1]+'" r="8" fill="'+color+'" />';
+    svg += '<text x="'+(dxy[0]+11)+'" y="'+(dxy[1]+4)+'" font-size="11" fill="#ffffff">'+c.driver.name+'</text>';
+    c.passengers.forEach(function(p){
+      var pxy = xy(p);
+      svg += '<circle cx="'+pxy[0]+'" cy="'+pxy[1]+'" r="6" fill="'+color+'" fill-opacity="0.55" />';
+      svg += '<text x="'+(pxy[0]+9)+'" y="'+(pxy[1]+4)+'" font-size="11" fill="#98989d">'+p.name+'</text>';
+    });
+  });
+  svg += '</svg>';
+  return svg;
+}
+
+function ratingRow(c){
+  var val = ratingsInput[c.driver.id] || 0;
+  var stars = "";
+  for (var n=1;n<=5;n++){
+    stars += '<button class="star-btn" onclick="setRating(\'' + c.driver.id + '\', ' + n + ')"><i class="ti ti-star" style="font-size:20px;opacity:' + (n<=val?1:0.3) + '"></i></button>';
+  }
+  return '<div class="row" style="margin-top:8px;"><span style="font-size:13px;color:var(--text-secondary);">' + c.driver.name + '</span><div>' + stars + '</div></div>';
+}
+
+function calificarCard(entry){
+  var driverIds = entry.driverIds || [];
+  var rows = "";
+  driverIds.forEach(function(did){
+    if (currentUserId === did) return;
+    var driver = players.filter(function(p){ return p.id === did; })[0];
+    if (!driver) return;
+    var val = ratingsInput[did] || 0;
+    var stars = "";
+    for (var n=1;n<=5;n++){
+      var filled = n <= val;
+      var iconClass = filled ? "ti-star-filled" : "ti-star";
+      var color = filled ? "var(--warning)" : "var(--text-tertiary)";
+      stars += '<button class="star-btn" onclick="submitRating(\'' + did + '\', ' + n + ')"><i class="ti ' + iconClass + '" style="font-size:22px;color:' + color + ';"></i></button>';
+    }
+    rows += '<div class="row" style="margin-top:8px;"><span style="font-size:14px;">' + driver.name + '</span><div>' + stars + '</div></div>';
+  });
+  if (!rows) return "";
+  return '<div class="card"><p style="margin:0;font-size:15px;font-weight:700;">Calificar</p>' + rows + '</div>';
+}
+
+function renderSemana(){
+  var html = "";
+  var calEntry = getCalificarEntry();
+  if (calEntry) { var calHtml = calificarCard(calEntry); if (calHtml) html += calHtml; }
+
+  html += '<div class="card">';
+  html += '<label class="field-label" style="margin-top:0;">Fecha</label>';
+  html += '<input type="date" value="' + matchDateISO + '" onchange="setMatchDate(this.value)" style="margin-bottom:12px;" />';
+  html += '<label class="field-label">Llegada</label>';
+  html += '<input type="time" value="' + matchTime + '" onchange="setMatchTime(this.value)" />';
+  html += '</div>';
+
+  html += players.map(playerCardMini).join("");
+  html += '<button class="btn-primary" onclick="calcularSemana()" style="margin-top:6px;"><i class="ti ti-refresh"></i>Designar choferes</button>';
+
+  if (result && result.error){
+    html += '<p style="color:var(--danger);font-size:13px;margin-top:12px;">' + result.error + '</p>';
+  }
+  if (result && result.cars){
+    html += '<div class="map-wrap" style="margin-top:16px;">' + mapSvg(result.cars) + '</div>';
+    html += result.cars.map(carBlock).join("");
+    if (!weekSaved){
+      html += '<div style="display:flex;gap:8px;margin-top:14px;">';
+      html += '<button class="btn-secondary" style="flex:1;" onclick="calcularSemana()"><i class="ti ti-refresh"></i> Volver a designar</button>';
+      html += '<button class="btn-primary" onclick="guardarSemana()" style="flex:1;background:var(--bg-elevated-2);color:var(--text-primary);"><i class="ti ti-check"></i>Guardar semana</button>';
+      html += '</div>';
+    } else {
+      html += '<p style="font-size:13px;color:var(--success);margin-top:8px;display:flex;align-items:center;gap:6px;"><i class="ti ti-trophy"></i>Semana guardada en el historial.</p>';
+    }
+  }
+  return html;
+}
+
+var ICON_SEATBELT = '<svg width="30" height="30" viewBox="0 0 512.001 512.001" fill="currentColor" style="vertical-align:-9px;"><g><g><path d="M504.397,389.006c-31.326-26.343-66.046-46.927-102.638-61.75c-6.193-48.325-20.188-91.704-39.951-125.56L463.09,100.414 c8.331-8.331,8.331-21.839,0-30.17s-21.839-8.331-30.17,0l-96.611,96.611c-6.9-7.426-14.212-13.911-21.892-19.346 c16.56-15.565,26.917-37.654,26.917-62.176C341.334,38.202,303.132,0,256,0s-85.333,38.202-85.333,85.333 c0,24.522,10.357,46.611,26.917,62.176c-44.515,31.505-76.746,98.288-87.239,178.934c-36.96,14.913-71.826,35.818-102.967,62.756 c-8.911,7.708-9.886,21.18-2.178,30.091c7.708,8.911,21.18,9.886,30.091,2.178c21.95-18.987,46.027-34.583,71.483-46.822 c-0.063,3.107-0.106,6.222-0.106,9.354c0,39.359,5.14,77.561,14.866,112.403C124.106,505.623,132.507,512,142.08,512h71.253 c11.782,0,21.333-9.551,21.333-21.333v-76.495c11.844-11.642,30.823-11.642,42.667,0v76.495c0,11.782,9.551,21.333,21.333,21.333 h71.253c9.573,0,17.974-6.377,20.548-15.598c9.726-34.841,14.866-73.044,14.866-112.403c0-2.868-0.036-5.721-0.089-8.568 c25.364,12.16,49.495,27.563,71.692,46.229c9.017,7.583,22.475,6.42,30.058-2.597S513.415,396.589,504.397,389.006z M356.173,312.019c-29.963-8.012-60.705-12.417-91.479-13.209l65.699-65.699C341.615,255.1,350.569,281.933,356.173,312.019z M213.334,85.334c0-23.567,19.099-42.667,42.667-42.667s42.667,19.099,42.667,42.667S279.568,128,256,128 S213.334,108.901,213.334,85.334z M256,170.667c17.643,0,34.859,9.531,50.136,26.36L200.768,302.396 c-15.089,2.095-30.058,5.058-44.812,8.927C171.529,228.617,212.471,170.667,256,170.667z M362.667,384 c0,29.67-3.225,58.522-9.344,85.333H320V413.91c0-11.142-4.425-21.837-12.307-29.72c-28.555-28.555-74.831-28.555-103.386,0 C196.425,392.072,192,402.767,192,413.91v55.424h-33.323c-6.119-26.811-9.344-55.663-9.344-85.333 c0-9.015,0.297-17.883,0.861-26.578c68.216-21.672,142.799-21.428,211.655,0.733C362.384,366.617,362.667,375.238,362.667,384z"/></g></g></svg>';
+var ICON_WHEEL = '<svg width="30" height="30" viewBox="0 0 512 512" fill="currentColor" style="vertical-align:-9px;"><g><g><path d="M437.02,74.981C388.668,26.628,324.38,0,256,0S123.333,26.628,74.98,74.981C26.628,123.333,0,187.62,0,256 s26.628,132.667,74.98,181.019C123.333,485.372,187.62,512,256,512s132.667-26.628,181.02-74.981 C485.372,388.668,512,324.38,512,256S485.372,123.333,437.02,74.981z M256,57.263c100.782,0,184.276,75.409,197.04,172.765 L329.849,218.03c-13.813-26.755-41.72-45.102-73.849-45.102s-60.036,18.347-73.849,45.102L58.96,230.028 C71.724,132.672,155.218,57.263,256,57.263z M58.889,281.375l121.731,9.484c7.69,16.55,20.669,30.166,36.76,38.655l7.978,122.859 C138.513,438.875,70.099,368.943,58.889,281.375z M256,281.809c-14.232,0-25.809-11.578-25.809-25.809S241.77,230.191,256,230.191 S281.809,241.77,281.809,256S270.232,281.809,256,281.809z M286.644,452.373l7.978-122.859 c16.091-8.488,29.069-22.105,36.76-38.655l121.731-9.484C441.901,368.943,373.487,438.875,286.644,452.373z"/></g></g></svg>';
+var ICON_STAR = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-8px;"><path d="M11.2691 4.41115C11.5006 3.89177 11.6164 3.63208 11.7776 3.55211C11.9176 3.48263 12.082 3.48263 12.222 3.55211C12.3832 3.63208 12.499 3.89177 12.7305 4.41115L14.5745 8.54808C14.643 8.70162 14.6772 8.77839 14.7302 8.83718C14.777 8.8892 14.8343 8.93081 14.8982 8.95929C14.9705 8.99149 15.0541 9.00031 15.2213 9.01795L19.7256 9.49336C20.2911 9.55304 20.5738 9.58288 20.6997 9.71147C20.809 9.82316 20.8598 9.97956 20.837 10.1342C20.8108 10.3122 20.5996 10.5025 20.1772 10.8832L16.8125 13.9154C16.6877 14.0279 16.6252 14.0842 16.5857 14.1527C16.5507 14.2134 16.5288 14.2807 16.5215 14.3503C16.5132 14.429 16.5306 14.5112 16.5655 14.6757L17.5053 19.1064C17.6233 19.6627 17.6823 19.9408 17.5989 20.1002C17.5264 20.2388 17.3934 20.3354 17.2393 20.3615C17.0619 20.3915 16.8156 20.2495 16.323 19.9654L12.3995 17.7024C12.2539 17.6184 12.1811 17.5765 12.1037 17.56C12.0352 17.5455 11.9644 17.5455 11.8959 17.56C11.8185 17.5765 11.7457 17.6184 11.6001 17.7024L7.67662 19.9654C7.18404 20.2495 6.93775 20.3915 6.76034 20.3615C6.60623 20.3354 6.47319 20.2388 6.40075 20.1002C6.31736 19.9408 6.37635 19.6627 6.49434 19.1064L7.4341 14.6757C7.46898 14.5112 7.48642 14.429 7.47814 14.3503C7.47081 14.2807 7.44894 14.2134 7.41394 14.1527C7.37439 14.0842 7.31195 14.0279 7.18708 13.9154L3.82246 10.8832C3.40005 10.5025 3.18884 10.3122 3.16258 10.1342C3.13978 9.97956 3.19059 9.82316 3.29993 9.71147C3.42581 9.58288 3.70856 9.55304 4.27406 9.49336L8.77835 9.01795C8.94553 9.00031 9.02911 8.99149 9.10139 8.95929C9.16534 8.93081 9.2226 8.8892 9.26946 8.83718C9.32241 8.77839 9.35663 8.70162 9.42508 8.54808L11.2691 4.41115Z"/></svg>';
+var ICON_BUS = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-9px;"><path d="M5 6V15.8C5 16.9201 5 17.4802 5.21799 17.908C5.40973 18.2843 5.71569 18.5903 6.09202 18.782C6.51984 19 7.07989 19 8.2 19H15.8C16.9201 19 17.4802 19 17.908 18.782C18.2843 18.5903 18.5903 18.2843 18.782 17.908C19 17.4802 19 16.9201 19 15.8V6M5 6C5 6 5 3 12 3C19 3 19 6 19 6M5 6H19M5 13H19M17 21V19M7 21V19M8 16H8.01M16 16H16.01"/></svg>';
+var ICON_CAR = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;"><path d="M3 8L5.72187 10.2682C5.90158 10.418 6.12811 10.5 6.36205 10.5H17.6379C17.8719 10.5 18.0984 10.418 18.2781 10.2682L21 8M6.5 14H6.51M17.5 14H17.51M8.16065 4.5H15.8394C16.5571 4.5 17.2198 4.88457 17.5758 5.50772L20.473 10.5777C20.8183 11.1821 21 11.8661 21 12.5623V18.5C21 19.0523 20.5523 19.5 20 19.5H19C18.4477 19.5 18 19.0523 18 18.5V17.5H6V18.5C6 19.0523 5.55228 19.5 5 19.5H4C3.44772 19.5 3 19.0523 3 18.5V12.5623C3 11.8661 3.18166 11.1821 3.52703 10.5777L6.42416 5.50772C6.78024 4.88457 7.44293 4.5 8.16065 4.5ZM7 14C7 14.2761 6.77614 14.5 6.5 14.5C6.22386 14.5 6 14.2761 6 14C6 13.7239 6.22386 13.5 6.5 13.5C6.77614 13.5 7 13.7239 7 14ZM18 14C18 14.2761 17.7761 14.5 17.5 14.5C17.2239 14.5 17 14.2761 17 14C17 13.7239 17.2239 13.5 17.5 13.5C17.7761 13.5 18 13.7239 18 14Z"/></svg>';
+var ICON_HOUSE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;"><path d="M14 21.0001V15.0001H10V21.0001M19 9.77818V16.2001C19 17.8802 19 18.7203 18.673 19.362C18.3854 19.9265 17.9265 20.3855 17.362 20.6731C16.7202 21.0001 15.8802 21.0001 14.2 21.0001H9.8C8.11984 21.0001 7.27976 21.0001 6.63803 20.6731C6.07354 20.3855 5.6146 19.9265 5.32698 19.362C5 18.7203 5 17.8802 5 16.2001V9.77753M21 12.0001L15.5668 5.96405C14.3311 4.59129 13.7133 3.9049 12.9856 3.65151C12.3466 3.42894 11.651 3.42899 11.0119 3.65165C10.2843 3.90516 9.66661 4.59163 8.43114 5.96458L3 12.0001"/></svg>';
+
+function formatRatio(r){
+  return r.toFixed(3).replace(".", ",");
+}
+function ratioColor(r){
+  if (r >= 0.5) return "var(--success)";
+  if (r >= 0.49) return "var(--warning)";
+  return "var(--danger)";
+}
+var ICON_CLOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>';
+var ICON_PERSON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21C5 17.134 8.13401 14 12 14C15.866 14 19 17.134 19 21M16 7C16 9.20914 14.2091 11 12 11C9.79086 11 8 9.20914 8 7C8 4.79086 9.79086 3 12 3C14.2091 3 16 4.79086 16 7Z"/></svg>';
+var ICON_CAR_FRONT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8L5.72187 10.2682C5.90158 10.418 6.12811 10.5 6.36205 10.5H17.6379C17.8719 10.5 18.0984 10.418 18.2781 10.2682L21 8M6.5 14H6.51M17.5 14H17.51M8.16065 4.5H15.8394C16.5571 4.5 17.2198 4.88457 17.5758 5.50772L20.473 10.5777C20.8183 11.1821 21 11.8661 21 12.5623V18.5C21 19.0523 20.5523 19.5 20 19.5H19C18.4477 19.5 18 19.0523 18 18.5V17.5H6V18.5C6 19.0523 5.55228 19.5 5 19.5H4C3.44772 19.5 3 19.0523 3 18.5V12.5623C3 11.8661 3.18166 11.1821 3.52703 10.5777L6.42416 5.50772C6.78024 4.88457 7.44293 4.5 8.16065 4.5ZM7 14C7 14.2761 6.77614 14.5 6.5 14.5C6.22386 14.5 6 14.2761 6 14C6 13.7239 6.22386 13.5 6.5 13.5C6.77614 13.5 7 13.7239 7 14ZM18 14C18 14.2761 17.7761 14.5 17.5 14.5C17.2239 14.5 17 14.2761 17 14C17 13.7239 17.2239 13.5 17.5 13.5C17.7761 13.5 18 13.7239 18 14Z"/></svg>';
+var ICON_HISTORY = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12,6a1,1,0,0,0-1,1v5a1,1,0,0,0,.293.707l3,3a1,1,0,0,0,1.414-1.414L13,11.586V7A1,1,0,0,0,12,6Z M23.812,10.132A12,12,0,0,0,3.578,3.415V1a1,1,0,0,0-2,0V5a2,2,0,0,0,2,2h4a1,1,0,0,0,0-2H4.827a9.99,9.99,0,1,1-2.835,7.878A.982.982,0,0,0,1,12a1.007,1.007,0,0,0-1,1.1,12,12,0,1,0,23.808-2.969Z"/></svg>';
+var ICON_CHART = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><rect x="7" y="13" width="3" height="5"/><rect x="12" y="9" width="3" height="9"/><rect x="17" y="5" width="3" height="13"/></svg>';
+var ICON_GEAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82A1.65 1.65 0 0 0 3 13.09H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+var ICON_TAXI = '<svg viewBox="0 0 1024 1024"><path d="M630.7 349.8c1.7 10.4-5.6 18.9-16.1 18.9h-57.3c-10.5 0-17.8-8.5-16.1-18.9l6.2-38.8c1.6-10.4 11.6-19 22.1-19h32.7c10.5 0 20.5 8.5 22.2 18.9l6.3 38.9z" fill="#D1D3D3" /><path d="M630.7 349.8l-3.1-19.4h-83.3l-3.1 19.4c-1.7 10.4 5.6 18.9 16.1 18.9h57.3c10.5 0 17.7-8.5 16.1-18.9z" fill="" /><path d="M910.8 524.6c-3-26.9-21.7-48.2-48.2-48.2h-96.8L707.5 384c-14.2-22.4-47.5-40.8-74-40.8H292.7c-26.5 0-54.2 20.9-61.5 46.4L206.4 476c0 0.1-0.1 0.3-0.1 0.4H151c-26.5 0-48.2 21.7-48.2 48.2v97.6h819.5l-11.5-97.6z" fill="#FFB819" /><path d="M911.8 533.1h-57.7V580h63.3z" fill="#00B3E3" /><path d="M865 580h-15.9c-3.7 0-6.7-3-6.7-6.7v-33.4c0-3.7 3-6.7 6.7-6.7H865V580z" fill="#FFFFFF" /><path d="M286 516.6c-61.1 0-111.3 46.2-117.7 105.6h235.4c-6.4-59.4-56.6-105.6-117.7-105.6z" fill="" /><path d="M286 635m-97.2 0a97.2 97.2 0 1 0 194.4 0 97.2 97.2 0 1 0-194.4 0Z" fill="#333E48" /><path d="M286 635m-49.3 0a49.3 49.3 0 1 0 98.6 0 49.3 49.3 0 1 0-98.6 0Z" fill="#A4A9AD" /><path d="M713.7 516.6c-61.1 0-111.3 46.2-117.7 105.6h235.4c-6.3-59.4-56.6-105.6-117.7-105.6z" fill="" /><path d="M713.7 635m-97.2 0a97.2 97.2 0 1 0 194.4 0 97.2 97.2 0 1 0-194.4 0Z" fill="#333E48" /><path d="M713.7 635m-49.3 0a49.3 49.3 0 1 0 98.6 0 49.3 49.3 0 1 0-98.6 0Z" fill="#A4A9AD" /><path d="M960.5 627.1c0 9.9-8.1 17.9-17.9 17.9h-40.4c-9.9 0-17.9-8.1-17.9-17.9v-29.2c0-9.9 8.1-17.9 17.9-17.9h40.4c9.9 0 17.9 8.1 17.9 17.9v29.2zM141 627.1c0 9.9-8.1 17.9-17.9 17.9H82.6c-9.9 0-17.9-8.1-17.9-17.9v-29.2c0-9.9 8.1-17.9 17.9-17.9H123c9.9 0 17.9 8.1 17.9 17.9l0.1 29.2z" fill="#333E48" /><path d="M102.8 533.1H155V580h-52.2z" fill="#00B3E3" /><path d="M144.1 580H160c3.7 0 6.7-3 6.7-6.7v-33.4c0-3.7-3-6.7-6.7-6.7h-15.9V580z" fill="#FFFFFF" /><path d="M488 402.2c0-10.5 8.6-19.2 19.2-19.2h129c10.5 0 23.9 7.2 29.6 16.1l29.8 45.9c5.7 8.8 1.8 16.1-8.7 16.1H507.2c-10.5 0-19.2-8.6-19.2-19.2v-39.7zM295.4 401.3c3.2-10 14.5-18.2 25-18.2h108.9c10.5 0 19.2 8.6 19.2 19.2V442c0 10.5-8.6 19.2-19.2 19.2h-134c-10.5 0-16.5-8.2-13.3-18.2l13.4-41.7z" fill="#333E48" /><path d="M665.8 399.1c-5.7-8.8-19.1-16.1-29.6-16.1h-129c-10.5 0-19.2 8.6-19.2 19.2V420c0-10.5 8.6-19.2 19.2-19.2h144.3c6.3 0 13.7 2.6 19.7 6.6l-5.4-8.3zM429.3 383H320.4c-10.5 0-21.8 8.2-25 18.2l-3.2 9.9c5.1-6.1 13-10.3 20.6-10.3h116.6c10.5 0 19.2 8.6 19.2 19.2v-17.8c-0.1-10.5-8.7-19.2-19.3-19.2z" fill="" /><path d="M371.4 500.1H399v27.6h-27.6z" fill="#333E48" /><path d="M398.9 527.6h27.6v27.6h-27.6zM426.5 500.1h27.6v27.6h-27.6zM454.1 527.6h27.6v27.6h-27.6z" fill="#333E48" /><path d="M481.7 500.1h27.6v27.6h-27.6z" fill="#333E48" /><path d="M509.3 527.6h27.6v27.6h-27.6z" fill="#333E48" /><path d="M536.8 500.1h27.6v27.6h-27.6zM564.4 527.6H592v27.6h-27.6zM592 500.1h27.6v27.6H592z" fill="#333E48" /><path d="M592 527.6h27.6v27.6H592zM564.4 500.1H592v27.6h-27.6zM536.8 527.6h27.6v27.6h-27.6z" fill="#FFFFFF" /><path d="M509.3 500.1h27.6v27.6h-27.6z" fill="#FFFFFF" /><path d="M481.7 527.6h27.6v27.6h-27.6z" fill="#FFFFFF" /><path d="M454.1 500.1h27.6v27.6h-27.6zM426.5 527.6h27.6v27.6h-27.6zM398.9 500.1h27.6v27.6h-27.6z" fill="#FFFFFF" /><path d="M371.4 527.6H399v27.6h-27.6z" fill="#FFFFFF" /></svg>';
+
+function profileCard(p){
+  var ratio = ratioDe(p);
+  var avg = promedio(p.ratings);
+  return '<div class="card" style="position:relative;padding:18px 18px 20px;border-radius:var(--radius-lg);">' +
+    '<div class="row-start">' +
+      avatarHtml(p, 50, 16, "background:#182338;color:#4d94ff;") +
+      '<p class="name" style="font-size:20px;">' + p.name + '</p>' +
+    '</div>' +
+    '<div style="text-align:center;margin:8px 0 10px;">' +
+      '<p style="margin:0;font-size:52px;font-weight:800;letter-spacing:-0.01em;color:' + ratioColor(ratio) + ';">' + formatRatio(ratio) + '</p>' +
+    '</div>' +
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-top:8px;color:var(--text-secondary);font-size:18px;font-weight:600;">' +
+      '<span style="display:flex;flex-direction:column;align-items:center;gap:4px;"><span class="stat-icon">' + ICON_WHEEL + '</span>' + p.viajesChofer + '</span>' +
+      '<span style="display:flex;flex-direction:column;align-items:center;gap:4px;"><span class="stat-icon">' + ICON_SEATBELT + '</span>' + p.viajesPasajero + '</span>' +
+      '<span style="display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;" onclick="openRatings(\'' + p.id + '\')"><span class="stat-icon">' + ICON_STAR + '</span>' + (avg ? avg.toFixed(1) : "-") + '</span>' +
+      '<span style="display:flex;flex-direction:column;align-items:center;gap:4px;"><span class="stat-icon">' + ICON_BUS + '</span>' + p.colectivos + '</span>' +
+    '</div>' +
+    '<div class="divider"></div>' +
+    '<p style="font-size:14px;color:var(--text-secondary);margin:0;">' + ICON_CAR + ' ' + p.car.model + ' &middot; ' + p.car.plate + '</p>' +
+    '<p style="font-size:14px;color:var(--text-secondary);margin:10px 0 0;">' + ICON_HOUSE + ' ' + p.address + '</p>' +
+  '</div>';
+}
+
+function openRatings(id){ viewingRatingsId = id; render(); }
+function closeRatings(){ viewingRatingsId = null; render(); }
+
+function ratingsModal(){
+  if (!viewingRatingsId) return "";
+  var p = players.filter(function(x){ return x.id === viewingRatingsId; })[0];
+  if (!p) return "";
+  var rows = p.ratings.length
+    ? p.ratings.slice().reverse().map(function(r, i){
+        return '<div class="row" style="padding:6px 0;' + (i>0 ? "border-top:1px solid var(--border-soft);" : "") + '">' +
+          '<span style="font-size:13px;color:var(--text-secondary);">Calificacion ' + (p.ratings.length - i) + '</span>' +
+          '<span style="display:flex;align-items:center;gap:4px;color:var(--warning);"><span class="stat-icon" style="width:16px;height:16px;">' + ICON_STAR + '</span>' + r + '</span>' +
+        '</div>';
+      }).join("")
+    : '<p style="font-size:13px;color:var(--text-tertiary);margin:0;">Todavia no tiene calificaciones.</p>';
+  return '<div class="modal-backdrop" onclick="closeRatings()">' +
+    '<div class="modal-sheet" onclick="event.stopPropagation()">' +
+      '<p style="margin:0 0 4px;font-size:16px;font-weight:700;">' + p.name + '</p>' +
+      '<p style="margin:0 0 14px;font-size:12px;color:var(--text-secondary);">Promedio ' + (promedio(p.ratings) ? promedio(p.ratings).toFixed(1) : "-") + '</p>' +
+      rows +
+      '<button class="btn-secondary" style="width:100%;margin-top:16px;" onclick="closeRatings()">Cerrar</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function editModal(){
+  if (!editingProfileId) return "";
+  var p = players.filter(function(x){ return x.id === editingProfileId; })[0];
+  if (!p) return "";
+  return '<div class="modal-backdrop" onclick="closeEditProfile()">' +
+    '<div class="modal-sheet" onclick="event.stopPropagation()">' +
+      '<p style="margin:0 0 16px;font-size:16px;font-weight:700;">Editar perfil</p>' +
+      '<label class="field-label">Nombre</label><input type="text" id="edit-name" value="' + p.name + '" />' +
+      '<label class="field-label">Modelo de auto</label><input type="text" id="edit-model" value="' + p.car.model + '" />' +
+      '<label class="field-label">Patente</label><input type="text" id="edit-plate" value="' + p.car.plate + '" />' +
+      '<label class="field-label">Direccion</label><input type="text" id="edit-address" value="' + p.address + '" />' +
+      '<div style="display:flex;gap:8px;margin-top:18px;">' +
+        '<button class="btn-secondary" style="flex:1;" onclick="closeEditProfile()">Cancelar</button>' +
+        '<button class="btn-primary" style="flex:1;" onclick="saveEditProfile(\'' + p.id + '\')">Guardar</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function computeStreak(p){
+  var streak = 0;
+  for (var i = 0; i < poolHistory.length; i++){
+    var h = poolHistory[i];
+    var wasDriver = h.driverIds && h.driverIds.indexOf(p.id) !== -1;
+    if (wasDriver) break;
+    var wasPassenger = h.passengers && Object.keys(h.passengers).some(function(k){ return h.passengers[k].indexOf(p.name) !== -1; });
+    if (wasPassenger) { streak++; } else { break; }
+  }
+  return streak;
+}
+
+function renderEstadisticas(){
+  var ordenados = players.slice().sort(function(a,b){ return ratioDe(b) - ratioDe(a); });
+
+  var html = '<div class="card">';
+  html += '<p style="margin:0 0 12px;font-size:13px;font-weight:700;color:var(--text-secondary);">RANKING</p>';
+  html += '<div style="display:flex;font-size:10px;font-weight:700;color:var(--text-tertiary);letter-spacing:0.04em;padding-bottom:8px;">' +
+    '<span style="flex:1.4;">NOMBRE</span>' +
+    '<span style="width:52px;text-align:center;">RATIO</span>' +
+    '<span style="width:44px;text-align:center;">CHOFER</span>' +
+    '<span style="width:52px;text-align:center;">PASAJ.</span>' +
+    '<span style="width:52px;text-align:center;">COLECT.</span>' +
+  '</div>';
+  ordenados.forEach(function(p, i){
+    var ratio = ratioDe(p);
+    html += '<div style="display:flex;align-items:center;padding:8px 0;font-size:13px;' + (i>0 ? "border-top:1px solid var(--border-soft);" : "") + '">' +
+      '<span style="flex:1.4;">' + p.name + '</span>' +
+      '<span style="width:52px;text-align:center;font-weight:700;color:' + ratioColor(ratio) + ';">' + formatRatio(ratio) + '</span>' +
+      '<span style="width:44px;text-align:center;color:var(--text-secondary);">' + p.viajesChofer + '</span>' +
+      '<span style="width:52px;text-align:center;color:var(--text-secondary);">' + p.viajesPasajero + '</span>' +
+      '<span style="width:52px;text-align:center;color:var(--text-secondary);">' + p.colectivos + '</span>' +
+    '</div>';
+  });
+  html += '</div>';
+
+  var ordenadosChofer = players.slice().sort(function(a,b){
+    var avgA = promedio(a.ratings), avgB = promedio(b.ratings);
+    if (avgA === null && avgB === null) return 0;
+    if (avgA === null) return 1;
+    if (avgB === null) return -1;
+    return avgB - avgA;
+  });
+  html += '<div class="card">';
+  html += '<p style="margin:0 0 10px;font-size:13px;font-weight:700;color:var(--text-secondary);">CALIFICACIONES</p>';
+  ordenadosChofer.forEach(function(p, i){
+    var avg = promedio(p.ratings);
+    html += '<div class="row" style="padding:7px 0;' + (i>0 ? "border-top:1px solid var(--border-soft);" : "") + '">' +
+      '<span style="display:flex;align-items:center;gap:8px;font-size:13px;"><span style="color:var(--text-tertiary);width:16px;">' + (i+1) + '</span>' + p.name + '</span>' +
+      '<span style="display:flex;align-items:center;gap:5px;font-weight:700;">' + (avg ? avg.toFixed(1) : "-") + ' <span class="stat-icon" style="width:16px;height:16px;color:var(--warning);">' + ICON_STAR + '</span></span>' +
+    '</div>';
+  });
+  html += '</div>';
+
+  var conRacha = players.filter(function(p){ return computeStreak(p) > 0; }).sort(function(a,b){ return computeStreak(b) - computeStreak(a); });
+  if (conRacha.length) {
+    html += '<div class="card">';
+    html += '<p style="margin:0 0 10px;font-size:13px;font-weight:700;color:var(--text-secondary);">RACHA COMO PASAJERO</p>';
+    conRacha.forEach(function(p, i){
+      var s = computeStreak(p);
+      html += '<div class="row" style="padding:6px 0;' + (i>0 ? "border-top:1px solid var(--border-soft);" : "") + '">' +
+        '<span style="font-size:13px;">' + p.name + '</span>' +
+        '<span style="font-size:13px;font-weight:700;color:var(--text-primary);">' + s + ' semana' + (s===1?"":"s") + '</span>' +
+      '</div>';
+    });
+    html += '</div>';
+  }
+
+  return html;
+}
+
+function renderPerfiles(){
+  return '<div class="profile-grid">' + players.map(profileCard).join("") + '</div>';
+}
+
+function historyItem(h){
+  var ddmm, yyyy;
+  if (h.dateISO) {
+    var parts = h.dateISO.split("-");
+    yyyy = parts[0]; ddmm = parts[2] + "/" + parts[1];
+  } else {
+    var fp = (h.fecha || "").split("/");
+    ddmm = fp.length >= 2 ? fp[0] + "/" + fp[1] : (h.fecha || "-");
+    yyyy = fp.length >= 3 ? fp[2] : "";
+  }
+  var driverNames = (h.drivers || []).join(", ") || "-";
+  var allPassengers = [];
+  if (h.passengers) {
+    Object.keys(h.passengers).forEach(function(k){ allPassengers = allPassengers.concat(h.passengers[k]); });
+  }
+  var passengerNames = allPassengers.join(", ") || "-";
+  var hasColectivo = h.passengers && Object.keys(h.passengers).some(function(k){ return h.passengers[k].length === 4; });
+  var busTag = hasColectivo ? '<span style="margin-left:auto;flex-shrink:0;align-self:center;color:var(--accent);"><span style="display:inline-flex;width:22px;height:22px;">' + ICON_BUS + '</span></span>' : "";
+  return '<div class="card" style="display:flex;gap:16px;align-items:flex-start;cursor:pointer;" onclick="openEditHistory(\'' + h.dateISO + '\')">' +
+    '<div style="min-width:52px;flex-shrink:0;text-align:center;">' +
+      '<p style="margin:0;font-size:16px;font-weight:700;color:#ffffff;">' + ddmm + '</p>' +
+      '<p style="margin:2px 0 0;font-size:16px;font-weight:700;color:#ffffff;">' + yyyy + '</p>' +
+    '</div>' +
+    '<div style="flex:1;">' +
+      '<p style="margin:0;font-size:13px;line-height:1.4;"><span style="color:var(--accent);font-weight:700;">CHOFER:</span> <span style="color:var(--text-secondary);">' + driverNames + '</span></p>' +
+      '<p style="margin:6px 0 0;font-size:13px;line-height:1.4;"><span style="color:var(--success);font-weight:700;">PASAJEROS:</span> <span style="color:var(--text-secondary);">' + passengerNames + '</span></p>' +
+    '</div>' +
+    busTag +
+  '</div>';
+}
+
+function openEditHistory(dateISO){
+  if (!dateISO) return;
+  editingHistoryDate = dateISO;
+  render();
+}
+function closeEditHistory(){ editingHistoryDate = null; render(); }
+
+function roleOfPlayerInEntry(h, p){
+  if (h.driverIds && h.driverIds.indexOf(p.id) !== -1) return "chofer";
+  if (h.passengers && Object.keys(h.passengers).some(function(k){ return h.passengers[k].indexOf(p.name) !== -1; })) return "pasajero";
+  return "no";
+}
+
+function reverseEntryStats(h){
+  players = players.map(function(p){
+    var wasDriver = h.driverIds && h.driverIds.indexOf(p.id) !== -1;
+    var wasPassenger = h.passengers && Object.keys(h.passengers).some(function(k){ return h.passengers[k].indexOf(p.name) !== -1; });
+    if (wasDriver) {
+      var hadColectivo = h.passengers && h.passengers[p.name] && h.passengers[p.name].length === 4;
+      return Object.assign({}, p, {
+        viajesChofer: Math.max(0, p.viajesChofer - 1),
+        colectivos: hadColectivo ? Math.max(0, p.colectivos - 1) : p.colectivos
+      });
+    }
+    if (wasPassenger) {
+      return Object.assign({}, p, { viajesPasajero: Math.max(0, p.viajesPasajero - 1) });
+    }
+    return p;
+  });
+}
+
+function applyEntryStats(h){
+  players = players.map(function(p){
+    var isDriver = h.driverIds && h.driverIds.indexOf(p.id) !== -1;
+    var isPassenger = h.passengers && Object.keys(h.passengers).some(function(k){ return h.passengers[k].indexOf(p.name) !== -1; });
+    if (isDriver) {
+      var hasColectivo = h.passengers && h.passengers[p.name] && h.passengers[p.name].length === 4;
+      return Object.assign({}, p, {
+        viajesChofer: p.viajesChofer + 1,
+        colectivos: hasColectivo ? p.colectivos + 1 : p.colectivos
+      });
+    }
+    if (isPassenger) {
+      return Object.assign({}, p, { viajesPasajero: p.viajesPasajero + 1 });
+    }
+    return p;
+  });
+}
+
+function saveHistoryEdit(dateISO){
+  var entry = poolHistory.filter(function(h){ return h.dateISO === dateISO; })[0];
+  if (!entry) return;
+
+  reverseEntryStats(entry);
+
+  var newDrivers = [], newDriverIds = [], newPassengerNames = [];
+  players.forEach(function(p){
+    var sel = document.getElementById("hist-role-" + p.id);
+    if (!sel) return;
+    if (sel.value === "chofer") { newDrivers.push(p.name); newDriverIds.push(p.id); }
+    else if (sel.value === "pasajero") { newPassengerNames.push(p.name); }
+  });
+
+  var newPassengersByDriver = {};
+  newDrivers.forEach(function(d){ newPassengersByDriver[d] = []; });
+  if (newDrivers.length === 1) {
+    newPassengersByDriver[newDrivers[0]] = newPassengerNames.slice();
+  } else if (newDrivers.length >= 2) {
+    newPassengerNames.forEach(function(name, i){
+      var d = newDrivers[i % newDrivers.length];
+      newPassengersByDriver[d].push(name);
+    });
+  }
+
+  entry.drivers = newDrivers;
+  entry.driverIds = newDriverIds;
+  entry.passengers = newPassengersByDriver;
+
+  applyEntryStats(entry);
+  saveState();
+  editingHistoryDate = null;
+  render();
+}
+
+function editHistoryModal(){
+  if (!editingHistoryDate) return "";
+  var h = poolHistory.filter(function(x){ return x.dateISO === editingHistoryDate; })[0];
+  if (!h) return "";
+  var parts = h.dateISO.split("-");
+  var display = parts[2] + "/" + parts[1] + "/" + parts[0];
+  var rows = players.map(function(p){
+    var role = roleOfPlayerInEntry(h, p);
+    return '<div style="margin-bottom:12px;">' +
+      '<label class="field-label" style="margin-top:0;">' + p.name + '</label>' +
+      '<select id="hist-role-' + p.id + '" style="width:100%;background:var(--bg-elevated-2);border:1px solid var(--border);color:var(--text-primary);border-radius:var(--radius-sm);padding:10px 12px;font-size:14px;">' +
+        '<option value="chofer"' + (role==="chofer"?" selected":"") + '>Chofer</option>' +
+        '<option value="pasajero"' + (role==="pasajero"?" selected":"") + '>Pasajero</option>' +
+        '<option value="no"' + (role==="no"?" selected":"") + '>No jugo</option>' +
+      '</select>' +
+    '</div>';
+  }).join("");
+  return '<div class="modal-backdrop" onclick="closeEditHistory()">' +
+    '<div class="modal-sheet" onclick="event.stopPropagation()">' +
+      '<p style="margin:0 0 4px;font-size:16px;font-weight:700;">Editar viaje</p>' +
+      '<p style="margin:0 0 16px;font-size:12px;color:var(--text-secondary);">' + display + '</p>' +
+      rows +
+      '<div style="display:flex;gap:8px;margin-top:6px;">' +
+        '<button class="btn-secondary" style="flex:1;" onclick="closeEditHistory()">Cancelar</button>' +
+        '<button class="btn-primary" style="flex:1;" onclick="saveHistoryEdit(\'' + h.dateISO + '\')">Guardar</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function renderHistorial(){
+  if (!poolHistory.length) {
+    return '<div class="empty">' +
+      '<p style="margin:0 0 14px;">Todavia no hay semanas guardadas.</p>' +
+      '<button class="btn-secondary" onclick="setTab(\'semana\')">Ir a designar el primer chofer</button>' +
+    '</div>';
+  }
+  return poolHistory.map(historyItem).join("");
+}
+
+function renderAjustes(){
+  var me = players.filter(function(p){ return p.id === currentUserId; })[0];
+  var html = "";
+
+  if (!me) {
+    html += '<div class="card">';
+    html += '<p style="margin:0 0 12px;font-size:13px;font-weight:700;color:var(--text-secondary);">QUIEN SOS?</p>';
+    html += '<p style="margin:0 0 12px;font-size:12px;color:var(--text-tertiary);">Elegi tu perfil para poder editar tu auto, patente y direccion.</p>';
+    players.forEach(function(p){
+      html += '<button class="btn-secondary" style="width:100%;margin-bottom:8px;text-align:left;" onclick="setCurrentUser(\'' + p.id + '\')">' + p.name + '</button>';
+    });
+    html += '</div>';
+  } else {
+    html += '<div class="card">';
+    html += '<div class="row" style="margin-bottom:14px;">' +
+      '<span style="font-size:15px;font-weight:600;">' + me.name + '</span>' +
+      '<button class="btn-ghost" onclick="changeCurrentUser()">Cambiar perfil</button>' +
+    '</div>';
+    html += '<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">' +
+      avatarHtml(me, 64, 20) +
+      '<div style="display:flex;flex-direction:column;gap:8px;">' +
+        '<label class="btn-secondary" style="cursor:pointer;text-align:center;">Subir foto<input type="file" accept="image/*" style="display:none;" onchange="handlePhotoUpload(\'' + me.id + '\', this)" /></label>' +
+        (me.photo ? '<button class="btn-ghost" style="color:var(--danger);" onclick="removePhoto(\'' + me.id + '\')">Quitar foto</button>' : '') +
+      '</div>' +
+    '</div>';
+    html += '<label class="field-label" style="margin-top:0;">Modelo de auto</label>' +
+      '<input type="text" value="' + me.car.model + '" onchange="updateCar(\'' + me.id + '\',\'model\',this.value)" />' +
+      '<label class="field-label">Patente</label>' +
+      '<input type="text" value="' + me.car.plate + '" onchange="updateCar(\'' + me.id + '\',\'plate\',this.value)" />' +
+      '<label class="field-label">Direccion</label>' +
+      '<input type="text" value="' + me.address + '" onchange="updateAddress(\'' + me.id + '\', this.value)" />';
+    html += '</div>';
+  }
+
+  html += '<button class="btn-secondary" style="width:100%;margin-bottom:16px;" onclick="addPlayer()"><i class="ti ti-plus"></i> Agregar usuario</button>';
+
+  html += '<div class="card">';
+  html += '<p style="margin:0 0 10px;font-size:13px;font-weight:700;color:var(--text-secondary);">DESTINO</p>';
+  html += '<label class="field-label" style="margin-top:0;">Nombre</label><input type="text" value="' + venue.name + '" onchange="updateVenue(\'name\', this.value)" />';
+  html += '<label class="field-label">Direccion</label><input type="text" value="' + venue.address + '" onchange="updateVenue(\'address\', this.value)" />';
+  html += '</div>';
+
+  html += '<div class="card">';
+  html += '<p style="margin:0 0 10px;font-size:13px;font-weight:700;color:var(--text-secondary);">DATOS</p>';
+  html += '<button class="btn-secondary" style="width:100%;margin-bottom:8px;" onclick="exportBackup()">Exportar backup</button>';
+  html += '<label class="btn-secondary" style="width:100%;display:block;text-align:center;box-sizing:border-box;margin-bottom:8px;cursor:pointer;">Restaurar backup<input type="file" accept="application/json" style="display:none;" onchange="importBackup(this)" /></label>';
+  html += '<button class="btn-secondary" style="width:100%;color:var(--danger);border-color:var(--danger);" onclick="resetAllData()">Borrar ratios e historial</button>';
+  html += '</div>';
+
+  return html;
+}
+
+function render(){
+  var app = document.getElementById("app");
+  var html = '<div class="top-header">' +
+    '<div class="title-pill"><h1>Uber Zona Norte</h1></div>' +
+  '</div>';
+  html += tabsBar();
+  if (activeTab === "semana") html += renderSemana();
+  else if (activeTab === "perfiles") html += renderPerfiles();
+  else if (activeTab === "estadisticas") html += renderEstadisticas();
+  else if (activeTab === "ajustes") html += renderAjustes();
+  else html += renderHistorial();
+  html += editModal();
+  html += ratingsModal();
+  html += editHistoryModal();
+  app.innerHTML = html;
+}
+
+function startApp(){
+  if (FIREBASE_ENABLED) {
+    docRef.onSnapshot(function(doc){
+      if (doc.exists) {
+        var data = doc.data();
+        if (data.players) players = data.players;
+        if (data.poolHistory) poolHistory = data.poolHistory;
+        if (data.venue) venue = Object.assign(venue, data.venue);
+        players.forEach(function(p){ if (!(p.id in confirmed)) confirmed[p.id] = true; });
+      } else {
+        docRef.set({ players: defaultPlayers, poolHistory: importedHistory, venue: venue });
+      }
+      render();
+    }, function(err){
+      console.error("Error conectando a Firestore:", err);
+      document.getElementById("app").innerHTML = '<div class="empty">No se pudo conectar con la base de datos compartida. Revisa la configuracion de Firebase y las reglas de Firestore.</div>';
+    });
+  } else {
+    render();
+  }
+}
+startApp();
+</script>
+</body>
+</html>
