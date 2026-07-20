@@ -634,6 +634,16 @@ function guardarSemana(){
   render();
 }
 
+function findLastThursdayEntry(){
+  var now = new Date();
+  var day = now.getDay();
+  var diffBack = (day - 4 + 7) % 7;
+  var lastThu = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  lastThu.setDate(lastThu.getDate() - diffBack);
+  var iso = toISODate(lastThu);
+  return poolHistory.filter(function(h){ return h.dateISO === iso && h.driverIds && h.driverIds.length; })[0] || null;
+}
+
 function getCalificarEntry(){
   var now = new Date();
   var day = now.getDay();
@@ -642,27 +652,58 @@ function getCalificarEntry(){
   lastThu.setDate(lastThu.getDate() - diffBack);
   var fridayMidnight = new Date(lastThu.getFullYear(), lastThu.getMonth(), lastThu.getDate() + 1);
   if (now < fridayMidnight) return null;
-  var iso = toISODate(lastThu);
-  var entry = poolHistory.filter(function(h){ return h.dateISO === iso && h.driverIds && h.driverIds.length; })[0];
+  var entry = findLastThursdayEntry();
   if (!entry) return null;
-  var hasVoted = !!(currentUserId && entry.votedBy && entry.votedBy.indexOf(currentUserId) !== -1);
-  var cutoff = hasVoted
+  var votedAny = !!(currentUserId && entry.votedByDriver && Object.keys(entry.votedByDriver).some(function(did){
+    return entry.votedByDriver[did] && Object.prototype.hasOwnProperty.call(entry.votedByDriver[did], currentUserId);
+  }));
+  var cutoff = votedAny
     ? new Date(fridayMidnight.getTime() + 5 * 60 * 60 * 1000)
     : new Date(lastThu.getFullYear(), lastThu.getMonth(), lastThu.getDate() + 7);
   if (now >= cutoff) return null;
   return entry;
 }
 
+function hasRatedDriver(entry, driverId){
+  return !!(currentUserId && entry.votedByDriver && entry.votedByDriver[driverId] && Object.prototype.hasOwnProperty.call(entry.votedByDriver[driverId], currentUserId));
+}
+
+function myRatingForDriver(entry, driverId){
+  if (!hasRatedDriver(entry, driverId)) return null;
+  return entry.votedByDriver[driverId][currentUserId];
+}
+
 function submitRating(driverId, n){
-  ratingsInput[driverId] = n;
-  players = players.map(function(p){ return p.id === driverId ? Object.assign({}, p, { ratings: p.ratings.concat([n]) }) : p; });
-  var entry = getCalificarEntry();
-  if (entry){
-    if (!entry.votedBy) entry.votedBy = [];
-    if (currentUserId && entry.votedBy.indexOf(currentUserId) === -1) entry.votedBy.push(currentUserId);
+  if (!currentUserId) return;
+  var entrySnapshot = findLastThursdayEntry();
+  if (entrySnapshot && hasRatedDriver(entrySnapshot, driverId)) return;
+
+  function applyLocally(freshPlayers, freshHistory){
+    players = freshPlayers.map(function(p){ return p.id === driverId ? Object.assign({}, p, { ratings: p.ratings.concat([n]) }) : p; });
+    poolHistory = freshHistory;
+    var entry = poolHistory.filter(function(h){ return entrySnapshot && h.dateISO === entrySnapshot.dateISO; })[0];
+    if (entry){
+      if (!entry.votedByDriver) entry.votedByDriver = {};
+      if (!entry.votedByDriver[driverId]) entry.votedByDriver[driverId] = {};
+      entry.votedByDriver[driverId][currentUserId] = n;
+    }
+    ratingsInput[driverId] = n;
+    saveState();
+    render();
   }
-  saveState();
-  render();
+
+  if (FIREBASE_ENABLED && docRef){
+    docRef.get().then(function(doc){
+      var data = doc.exists ? doc.data() : {};
+      var freshPlayers = data.players || players;
+      var freshHistory = data.poolHistory || poolHistory;
+      applyLocally(freshPlayers, freshHistory);
+    }).catch(function(){
+      applyLocally(players, poolHistory);
+    });
+  } else {
+    applyLocally(players, poolHistory);
+  }
 }
 
 function toggleConfirm(id){ confirmed[id] = !confirmed[id]; result = null; weekSaved = false; render(); }
@@ -744,12 +785,18 @@ function addPlayer(){
   saveState();
   render();
 }
+function removeSelectedPlayer(){
+  var sel = document.getElementById("remove-player-select");
+  if (!sel || !sel.value) return;
+  removePlayer(sel.value);
+}
 function removePlayer(id){
   var p = players.filter(function(x){ return x.id === id; })[0];
   if (!p) return;
   if (!confirm("Seguro que queres sacar a " + p.name + " del pool? Se pierde su historial.")) return;
   players = players.filter(function(x){ return x.id !== id; });
   delete confirmed[id];
+  if (currentUserId === id){ currentUserId = null; saveCurrentUser(null); }
   saveState();
   render();
 }
@@ -958,6 +1005,16 @@ function calificarCard(entry){
   driverIds.forEach(function(did){
     var driver = players.filter(function(p){ return p.id === did; })[0];
     if (!driver) return;
+    if (hasRatedDriver(entry, did)){
+      var myVal = myRatingForDriver(entry, did);
+      var filledStars = "";
+      for (var m=1;m<=5;m++){
+        var c = m <= myVal ? "var(--warning)" : "var(--text-tertiary)";
+        filledStars += '<span class="stat-icon" style="width:22px;height:22px;color:' + c + ';">' + ICON_STAR + '</span>';
+      }
+      rows += '<div class="row" style="margin-top:8px;"><span style="font-size:14px;">' + driver.name + '</span><div style="display:flex;">' + filledStars + '</div></div>';
+      return;
+    }
     var val = ratingsInput[did] || 0;
     var stars = "";
     for (var n=1;n<=5;n++){
@@ -1367,7 +1424,13 @@ function renderAjustes(){
     html += '</div>';
   }
 
-  html += '<button class="btn-secondary" style="width:100%;margin-bottom:16px;" onclick="addPlayer()"><i class="ti ti-plus"></i> Agregar usuario</button>';
+  html += '<button class="btn-secondary" style="width:100%;margin-bottom:10px;" onclick="addPlayer()"><i class="ti ti-plus"></i> Agregar usuario</button>';
+  html += '<div style="display:flex;gap:8px;margin-bottom:16px;">';
+  html += '<select id="remove-player-select" style="flex:1;background:var(--bg-elevated-2);border:1px solid var(--border);color:var(--text-primary);border-radius:var(--radius-sm);padding:10px 12px;font-size:14px;">';
+  html += players.map(function(p){ return '<option value="' + p.id + '">' + p.name + '</option>'; }).join("");
+  html += '</select>';
+  html += '<button class="btn-secondary" style="color:var(--danger);border-color:var(--danger);" onclick="removeSelectedPlayer()">Eliminar</button>';
+  html += '</div>';
 
   html += '<div class="card">';
   html += '<p style="margin:0 0 10px;font-size:13px;font-weight:700;color:var(--text-secondary);">DESTINO</p>';
