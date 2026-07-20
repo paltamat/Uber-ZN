@@ -391,13 +391,13 @@ function loadState(){
 }
 function saveState(){
   if (FIREBASE_ENABLED) {
-    docRef.set({ players: players, poolHistory: poolHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto }).catch(function(e){
+    docRef.set({ players: players, poolHistory: poolHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino }).catch(function(e){
       console.error("Error guardando en Firestore:", e);
     });
     return;
   }
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ players: players, poolHistory: poolHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ players: players, poolHistory: poolHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino }));
   } catch (e) { /* almacenamiento no disponible */ }
 }
 
@@ -425,7 +425,7 @@ var result = null;
 var ratingsInput = {};
 var weekSaved = false;
 var activeTab = "semana";
-var enCamino = {};
+var enCamino = (saved && saved.enCamino) ? saved.enCamino : {};
 var carColors = ["#0A84FF", "#FF9F0A"];
 var editingProfileId = null;
 var viewingRatingsId = null;
@@ -554,6 +554,34 @@ function lastDriveDateOf(p){
 }
 
 function calcularSemana(){
+  var existing = poolHistory.filter(function(h){ return h.dateISO === matchDateISO && h.driverIds && h.driverIds.length; })[0];
+  if (existing){
+    var carsFromHistory = existing.driverIds.map(function(did, i){
+      var driver = players.filter(function(p){ return p.id === did; })[0];
+      if (!driver) return null;
+      var driverName = existing.drivers[i];
+      var passengerNames = (existing.passengers && existing.passengers[driverName]) || [];
+      var passengers = passengerNames.map(function(name){ return players.filter(function(p){ return p.name === name; })[0]; }).filter(Boolean);
+      return { driver: driver, passengers: passengers, colectivo: passengers.length === 4 };
+    }).filter(Boolean);
+    if (carsFromHistory.length){
+      result = { loading: true };
+      weekSaved = true;
+      ratingsInput = {};
+      enCamino = {};
+      render();
+      Promise.all(carsFromHistory.map(function(c){ return getRouteForCar(c.driver, c.passengers); })).then(function(routes){
+        result = { cars: carsFromHistory.map(function(c, i){ return Object.assign({}, c, { route: routes[i] }); }) };
+        render();
+        setTimeout(function(){
+          var mapEl = document.querySelector(".map-wrap");
+          if (mapEl) mapEl.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 50);
+      });
+      return;
+    }
+  }
+
   var conf = players.filter(function(p){ return confirmed[p.id]; });
   if (conf.length < 2){ result = { error: "Necesitas al menos 2 confirmados para armar el pool." }; render(); return; }
   var driverPool = conf.filter(function(p){ return !sinAuto[p.id]; });
@@ -777,7 +805,7 @@ function showToast(msg){
 }
 function setCurrentUser(id){ currentUserId = id; saveCurrentUser(id); render(); }
 function changeCurrentUser(){ currentUserId = null; saveCurrentUser(null); render(); }
-function avisarEnCamino(id){ var now = new Date(); enCamino[id] = now.getHours()*60 + now.getMinutes(); render(); }
+function avisarEnCamino(id){ var now = new Date(); enCamino[id] = now.getHours()*60 + now.getMinutes(); saveState(); render(); }
 function openEditProfile(id){ editingProfileId = id; render(); }
 function closeEditProfile(){ editingProfileId = null; render(); }
 
@@ -1072,10 +1100,10 @@ function renderSemana(){
     if (!weekSaved){
       html += '<div style="display:flex;gap:8px;margin-top:14px;">';
       html += '<button class="btn-secondary" style="flex:1;" onclick="calcularSemana()"><i class="ti ti-refresh"></i> Volver a designar</button>';
-      html += '<button class="btn-primary" onclick="guardarSemana()" style="flex:1;background:var(--bg-elevated-2);color:var(--text-primary);"><i class="ti ti-check"></i>Guardar semana</button>';
+      html += '<button class="btn-primary" onclick="guardarSemana()" style="flex:1;background:var(--bg-elevated-2);color:var(--text-primary);"><i class="ti ti-check"></i>Confirmar viaje</button>';
       html += '</div>';
     } else {
-      html += '<p style="font-size:13px;color:var(--success);margin-top:8px;display:flex;align-items:center;gap:6px;"><i class="ti ti-trophy"></i>Semana guardada en el historial.</p>';
+      html += '<p style="font-size:13px;color:var(--success);margin-top:8px;display:flex;align-items:center;gap:6px;"><i class="ti ti-trophy"></i>Viaje confirmado.</p>';
     }
   }
   return html;
@@ -1521,9 +1549,10 @@ function startApp(){
         if (data.venue) venue = Object.assign(venue, data.venue);
         if (data.confirmed) confirmed = data.confirmed;
         if (data.sinAuto) sinAuto = data.sinAuto;
+        if (data.enCamino) enCamino = data.enCamino;
         players.forEach(function(p){ if (!(p.id in confirmed)) confirmed[p.id] = true; });
       } else {
-        docRef.set({ players: defaultPlayers, poolHistory: importedHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto });
+        docRef.set({ players: defaultPlayers, poolHistory: importedHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino });
       }
       render();
     }, function(err){
