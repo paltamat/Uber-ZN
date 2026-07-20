@@ -391,13 +391,13 @@ function loadState(){
 }
 function saveState(){
   if (FIREBASE_ENABLED) {
-    docRef.set({ players: players, poolHistory: poolHistory, venue: venue }).catch(function(e){
+    docRef.set({ players: players, poolHistory: poolHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto }).catch(function(e){
       console.error("Error guardando en Firestore:", e);
     });
     return;
   }
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ players: players, poolHistory: poolHistory, venue: venue }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ players: players, poolHistory: poolHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto }));
   } catch (e) { /* almacenamiento no disponible */ }
 }
 
@@ -418,8 +418,9 @@ var players = (saved && saved.players) ? saved.players : defaultPlayers;
 var poolHistory = (saved && saved.poolHistory) ? saved.poolHistory : importedHistory;
 var currentUserId = loadCurrentUser();
 
-var confirmed = {};
-players.forEach(function(p){ confirmed[p.id] = true; });
+var confirmed = (saved && saved.confirmed) ? saved.confirmed : {};
+players.forEach(function(p){ if (!(p.id in confirmed)) confirmed[p.id] = true; });
+var sinAuto = (saved && saved.sinAuto) ? saved.sinAuto : {};
 var result = null;
 var ratingsInput = {};
 var weekSaved = false;
@@ -555,7 +556,9 @@ function lastDriveDateOf(p){
 function calcularSemana(){
   var conf = players.filter(function(p){ return confirmed[p.id]; });
   if (conf.length < 2){ result = { error: "Necesitas al menos 2 confirmados para armar el pool." }; render(); return; }
-  var ordenados = conf.slice().sort(function(a,b){
+  var driverPool = conf.filter(function(p){ return !sinAuto[p.id]; });
+  if (driverPool.length === 0){ result = { error: "Nadie tiene auto disponible esta semana." }; render(); return; }
+  var ordenados = driverPool.slice().sort(function(a,b){
     var diff = ratioDe(a) - ratioDe(b);
     if (diff !== 0) return diff;
     var lastA = lastDriveDateOf(a), lastB = lastDriveDateOf(b);
@@ -563,7 +566,7 @@ function calcularSemana(){
     if (lastA > lastB) return 1;
     return 0;
   });
-  var dosAutos = conf.length === 6;
+  var dosAutos = conf.length === 6 && ordenados.length >= 2;
   var drivers = dosAutos ? [ordenados[0], ordenados[1]] : [ordenados[0]];
   var cars;
   if (!dosAutos){
@@ -630,6 +633,7 @@ function guardarSemana(){
     return p;
   });
   weekSaved = true;
+  sinAuto = {};
   saveState();
   render();
 }
@@ -706,7 +710,8 @@ function submitRating(driverId, n){
   }
 }
 
-function toggleConfirm(id){ confirmed[id] = !confirmed[id]; result = null; weekSaved = false; render(); }
+function toggleConfirm(id){ confirmed[id] = !confirmed[id]; result = null; weekSaved = false; saveState(); render(); }
+function toggleSinAuto(id){ sinAuto[id] = !sinAuto[id]; saveState(); render(); }
 function toggleGroup(id){ players = players.map(function(p){ return p.id===id ? Object.assign({}, p, { group: p.group==="A"?"B":"A" }) : p; }); saveState(); render(); }
 function setRating(driverId, n){ ratingsInput[driverId] = n; render(); }
 function setTab(t){ activeTab = t; render(); }
@@ -895,12 +900,19 @@ function avatarHtml(p, size, fontSize, customColor){
 function playerCardMini(p){
   var ratio = ratioDe(p);
   var on = confirmed[p.id];
+  var noCar = sinAuto[p.id];
   return '<div class="card row">' +
     '<div class="row-start">' +
       avatarHtml(p, 34, 12) +
       '<div><p class="name">' + p.name + '</p><p class="subtext" style="cursor:default;">Ratio <span style="font-weight:700;color:' + ratioColor(ratio) + ';">' + formatRatio(ratio) + '</span></p></div>' +
     '</div>' +
-    '<div class="switch ' + (on?"on":"") + '" onclick="toggleConfirm(\'' + p.id + '\')"><div class="knob"></div></div>' +
+    '<div style="display:flex;align-items:center;gap:12px;">' +
+      '<button onclick="toggleSinAuto(\'' + p.id + '\')" aria-label="Sin auto esta semana" style="border:none;background:none;padding:0;cursor:pointer;color:' + (noCar ? "var(--danger)" : "var(--text-tertiary)") + ';display:flex;align-items:center;position:relative;">' +
+        '<span class="stat-icon" style="width:22px;height:22px;">' + ICON_CAR + '</span>' +
+        (noCar ? '<span style="position:absolute;left:1px;right:1px;top:50%;height:2px;background:var(--danger);transform:rotate(-20deg);"></span>' : '') +
+      '</button>' +
+      '<div class="switch ' + (on?"on":"") + '" onclick="toggleConfirm(\'' + p.id + '\')"><div class="knob"></div></div>' +
+    '</div>' +
   '</div>';
 }
 
@@ -1507,9 +1519,11 @@ function startApp(){
         if (data.players) players = data.players;
         if (data.poolHistory) poolHistory = data.poolHistory;
         if (data.venue) venue = Object.assign(venue, data.venue);
+        if (data.confirmed) confirmed = data.confirmed;
+        if (data.sinAuto) sinAuto = data.sinAuto;
         players.forEach(function(p){ if (!(p.id in confirmed)) confirmed[p.id] = true; });
       } else {
-        docRef.set({ players: defaultPlayers, poolHistory: importedHistory, venue: venue });
+        docRef.set({ players: defaultPlayers, poolHistory: importedHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto });
       }
       render();
     }, function(err){
