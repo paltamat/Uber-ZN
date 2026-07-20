@@ -601,6 +601,13 @@ function calcularSemana(){
 
 function guardarSemana(){
   if (!result || result.error) return;
+  var yaExiste = poolHistory.some(function(h){ return h.dateISO === matchDateISO && h.driverIds && h.driverIds.length; });
+  if (yaExiste){
+    alert("Ya hay una semana guardada para esta fecha (alguien ya designo choferes). Revisa el Historial en vez de guardar de nuevo.");
+    weekSaved = true;
+    render();
+    return;
+  }
   var histEntry = {
     fecha: isoToDisplay(matchDateISO),
     dateISO: matchDateISO,
