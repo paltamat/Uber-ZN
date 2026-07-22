@@ -409,12 +409,32 @@ function pedirNotificaciones(){
   });
 }
 
+var MY_PUSH_TOKEN_KEY = "pool_jueves_my_push_token";
 function guardarPushToken(token){
   var tokens = (pushTokens || []).filter(function(t){ return t.token !== token; });
   tokens.push({ token: token, userId: currentUserId });
   pushTokens = tokens;
+  try { localStorage.setItem(MY_PUSH_TOKEN_KEY, token); } catch (e) {}
   saveState();
+  render();
   alert("Notificaciones activadas en este celular.");
+}
+
+function getMyPushToken(){
+  try { return localStorage.getItem(MY_PUSH_TOKEN_KEY); } catch (e) { return null; }
+}
+
+function desactivarNotificaciones(){
+  var myToken = getMyPushToken();
+  if (!myToken){ alert("Este celular no tiene notificaciones activadas."); return; }
+  pushTokens = (pushTokens || []).filter(function(t){ return t.token !== myToken; });
+  saveState();
+  try { localStorage.removeItem(MY_PUSH_TOKEN_KEY); } catch (e) {}
+  if (FIREBASE_ENABLED && firebase.messaging){
+    try { firebase.messaging().deleteToken(); } catch (e) {}
+  }
+  render();
+  alert("Notificaciones desactivadas en este celular.");
 }
 
 var STORAGE_KEY = "pool_jueves_state_v2";
@@ -1550,8 +1570,12 @@ function renderAjustes(){
       '<input type="text" value="' + me.car.plate + '" onchange="updateCar(\'' + me.id + '\',\'plate\',this.value)" />' +
       '<label class="field-label">Direccion</label>' +
       '<input type="text" value="' + me.address + '" onchange="updateAddress(\'' + me.id + '\', this.value)" />';
-    var yaTieneToken = pushTokens.some(function(t){ return t.userId === me.id; });
-    html += '<button class="btn-secondary" style="width:100%;margin-top:12px;" onclick="pedirNotificaciones()">' + (yaTieneToken ? "Notificaciones activadas en este celular" : "Activar notificaciones en este celular") + '</button>';
+    var miToken = getMyPushToken();
+    if (miToken){
+      html += '<button class="btn-secondary" style="width:100%;margin-top:12px;color:var(--danger);border-color:var(--danger);" onclick="desactivarNotificaciones()">Desactivar notificaciones en este celular</button>';
+    } else {
+      html += '<button class="btn-secondary" style="width:100%;margin-top:12px;" onclick="pedirNotificaciones()">Activar notificaciones en este celular</button>';
+    }
     html += '</div>';
   }
 
