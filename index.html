@@ -382,8 +382,8 @@ if (FIREBASE_ENABLED) {
 }
 
 /* IMPORTANTE: reemplazar por la clave VAPID generada en
-   Firebase Console > Configuración del proyecto > Cloud Messaging > Certificados push web */
-var VAPID_KEY = "BCptLJnCCtew61VC_Zutja2shgxl2fCsoILRpwfk9xQ2bKBOPbdjfj5DgwOXLDpMTDktRkqxZx5f6Ze9_hPBgik";
+   Firebase Console > Configuracion del proyecto > Cloud Messaging > Certificados push web */
+var VAPID_KEY = "TU_VAPID_KEY";
 
 function pedirNotificaciones(){
   if (!FIREBASE_ENABLED || !currentUserId) { alert("Elegi tu perfil primero en Ajustes."); return; }
@@ -988,8 +988,8 @@ function playerCardMini(p){
       '<div><p class="name">' + p.name + '</p><p class="subtext" style="cursor:default;">Ratio <span style="font-weight:700;color:' + ratioColor(ratio) + ';">' + formatRatio(ratio) + '</span></p></div>' +
     '</div>' +
     '<div style="display:flex;align-items:center;gap:12px;">' +
-      '<button onclick="toggleSinAuto(\'' + p.id + '\')" aria-label="Sin auto esta semana" style="border:none;background:none;padding:0;cursor:pointer;color:' + (noCar ? "var(--danger)" : "var(--text-tertiary)") + ';display:flex;align-items:center;position:relative;">' +
-        '<span class="stat-icon" style="width:22px;height:22px;">' + ICON_CAR + '</span>' +
+      '<button onclick="toggleSinAuto(\'' + p.id + '\')" aria-label="Sin auto esta semana" style="border:none;background:none;padding:0;cursor:pointer;display:flex;align-items:center;position:relative;">' +
+        '<span class="stat-icon" style="width:22px;height:22px;color:' + (noCar ? "var(--danger)" : "var(--text-tertiary)") + ';">' + ICON_CAR + '</span>' +
         (noCar ? '<span style="position:absolute;left:1px;right:1px;top:50%;height:2px;background:var(--danger);transform:rotate(-20deg);"></span>' : '') +
       '</button>' +
       '<div class="switch ' + (on?"on":"") + '" onclick="toggleConfirm(\'' + p.id + '\')"><div class="knob"></div></div>' +
@@ -1012,7 +1012,7 @@ function routeBlock(c, color){
         var isArrived = !!arrived[passenger.id];
         var btnColor = isArrived ? "var(--success)" : "var(--text-tertiary)";
         var disabledStyle = canMark ? "cursor:pointer;" : "cursor:not-allowed;opacity:0.35;pointer-events:none;";
-        arriveBtn = '<button onclick="toggleArrived(\'' + passenger.id + '\')" aria-label="Llegue a la puerta" style="margin-left:auto;border:none;background:none;padding:0;' + disabledStyle + 'color:' + btnColor + ';display:flex;align-items:center;"><span class="stat-icon" style="width:30px;height:30px;">' + ICON_EXIT + '</span></button>';
+        arriveBtn = '<button onclick="toggleArrived(\'' + passenger.id + '\')" aria-label="Llegue a la puerta" style="margin-left:auto;border:none;background:none;padding:0;' + disabledStyle + 'display:flex;align-items:center;"><span class="stat-icon" style="width:30px;height:30px;color:' + btnColor + ';">' + ICON_EXIT + '</span></button>';
       }
     }
     return '<div class="route-stop">' +
@@ -1239,7 +1239,7 @@ function ratingsModal(){
     ? p.ratings.slice().reverse().map(function(r, i){
         return '<div class="row" style="padding:6px 0;' + (i>0 ? "border-top:1px solid var(--border-soft);" : "") + '">' +
           '<span style="font-size:13px;color:var(--text-secondary);">Calificacion ' + (p.ratings.length - i) + '</span>' +
-          '<span style="display:flex;align-items:center;gap:4px;color:var(--warning);"><span class="stat-icon" style="width:16px;height:16px;">' + ICON_STAR + '</span>' + r + '</span>' +
+          '<span style="display:flex;align-items:center;gap:4px;"><span class="stat-icon" style="width:16px;height:16px;color:var(--warning);">' + ICON_STAR + '</span>' + r + '</span>' +
         '</div>';
       }).join("")
     : '<p style="font-size:13px;color:var(--text-tertiary);margin:0;">Todavia no tiene calificaciones.</p>';
