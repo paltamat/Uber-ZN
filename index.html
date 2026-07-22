@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.44.0/tabler-icons.min.css" />
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging-compat.js"></script>
 <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDmbh9U3DMEIQZmouucVV-jLgEX3otl8H8&callback=onGoogleMapsLoaded"></script>
 <style>
   :root {
@@ -380,6 +381,42 @@ if (FIREBASE_ENABLED) {
   docRef = firebase.firestore().collection("pool-jueves").doc("shared-state");
 }
 
+/* IMPORTANTE: reemplazar por la clave VAPID generada en
+   Firebase Console > Configuración del proyecto > Cloud Messaging > Certificados push web */
+var VAPID_KEY = "BCptLJnCCtew61VC_Zutja2shgxl2fCsoILRpwfk9xQ2bKBOPbdjfj5DgwOXLDpMTDktRkqxZx5f6Ze9_hPBgik";
+
+function pedirNotificaciones(){
+  if (!FIREBASE_ENABLED || !currentUserId) { alert("Elegi tu perfil primero en Ajustes."); return; }
+  if (!("Notification" in window) || !navigator.serviceWorker){
+    alert("Este navegador no soporta notificaciones push.");
+    return;
+  }
+  navigator.serviceWorker.register("firebase-messaging-sw.js").then(function(registration){
+    var messaging = firebase.messaging();
+    Notification.requestPermission().then(function(permission){
+      if (permission !== "granted"){ alert("No diste permiso de notificaciones."); return; }
+      messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: registration }).then(function(token){
+        if (!token) { alert("No se pudo generar el token de notificaciones."); return; }
+        guardarPushToken(token);
+      }).catch(function(err){
+        console.error("Error obteniendo token FCM:", err);
+        alert("No se pudo activar las notificaciones. Revisa que la clave VAPID este bien cargada.");
+      });
+    });
+  }).catch(function(err){
+    console.error("Error registrando service worker:", err);
+    alert("No se pudo registrar el service worker (firebase-messaging-sw.js). Asegurate de que ese archivo este subido junto al index.html.");
+  });
+}
+
+function guardarPushToken(token){
+  var tokens = (pushTokens || []).filter(function(t){ return t.token !== token; });
+  tokens.push({ token: token, userId: currentUserId });
+  pushTokens = tokens;
+  saveState();
+  alert("Notificaciones activadas en este celular.");
+}
+
 var STORAGE_KEY = "pool_jueves_state_v2";
 
 function loadState(){
@@ -391,13 +428,13 @@ function loadState(){
 }
 function saveState(){
   if (FIREBASE_ENABLED) {
-    docRef.set({ players: players, poolHistory: poolHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino, arrived: arrived }).catch(function(e){
+    docRef.set({ players: players, poolHistory: poolHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino, arrived: arrived, pushTokens: pushTokens }).catch(function(e){
       console.error("Error guardando en Firestore:", e);
     });
     return;
   }
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ players: players, poolHistory: poolHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino, arrived: arrived }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ players: players, poolHistory: poolHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino, arrived: arrived, pushTokens: pushTokens }));
   } catch (e) { /* almacenamiento no disponible */ }
 }
 
@@ -428,6 +465,7 @@ var activeTab = "semana";
 var ICON_EXIT = '<svg viewBox="0 0 92 92" fill="currentColor"><path d="M60,60.7V79c0,2.2-1.6,4-3.8,4H4c-2.2,0-4-1.8-4-4V13c0-2.2,1.8-4,4-4h52.2c2.2,0,3.8,1.8,3.8,4v18.3 c0,2.2-1.8,4-4,4s-4-1.8-4-4V17H8v58h44V60.7c0-2.2,1.8-4,4-4S60,58.5,60,60.7z M90.8,43L75.2,27.2c-1.6-1.6-4.1-1.6-5.7,0 c-1.6,1.6-1.6,4.1,0,5.7l8.9,9L29.9,42c-2.2,0-4,1.8-4,4c0,2.2,1.8,4,4,4c0,0,0,0,0,0l48.5-0.1l-8.9,9c-1.6,1.6-1.5,4.1,0,5.7 c0.8,0.8,1.8,1.2,2.8,1.2c1,0,2.1-0.4,2.8-1.2l15.7-15.8C92.4,47.1,92.4,44.6,90.8,43z"/></svg>';
 var enCamino = (saved && saved.enCamino) ? saved.enCamino : {};
 var arrived = (saved && saved.arrived) ? saved.arrived : {};
+var pushTokens = (saved && saved.pushTokens) ? saved.pushTokens : [];
 var carColors = ["#0A84FF", "#FF9F0A"];
 var editingProfileId = null;
 var viewingRatingsId = null;
@@ -1418,7 +1456,24 @@ function saveHistoryEdit(dateISO){
   entry.driverIds = newDriverIds;
   entry.passengers = newPassengersByDriver;
 
+  var dateInput = document.getElementById("hist-date");
+  if (dateInput && dateInput.value && dateInput.value !== entry.dateISO){
+    entry.dateISO = dateInput.value;
+    entry.fecha = isoToDisplay(dateInput.value);
+  }
+
   applyEntryStats(entry);
+  saveState();
+  editingHistoryDate = null;
+  render();
+}
+
+function deleteHistoryEntry(dateISO){
+  var entry = poolHistory.filter(function(h){ return h.dateISO === dateISO; })[0];
+  if (!entry) return;
+  if (!confirm("Seguro que queres borrar este viaje del historial? Se van a restar los viajes correspondientes del ratio de cada uno.")) return;
+  reverseEntryStats(entry);
+  poolHistory = poolHistory.filter(function(h){ return h.dateISO !== dateISO; });
   saveState();
   editingHistoryDate = null;
   render();
@@ -1428,8 +1483,6 @@ function editHistoryModal(){
   if (!editingHistoryDate) return "";
   var h = poolHistory.filter(function(x){ return x.dateISO === editingHistoryDate; })[0];
   if (!h) return "";
-  var parts = h.dateISO.split("-");
-  var display = parts[2] + "/" + parts[1] + "/" + parts[0];
   var rows = players.map(function(p){
     var role = roleOfPlayerInEntry(h, p);
     return '<div style="margin-bottom:12px;">' +
@@ -1444,12 +1497,14 @@ function editHistoryModal(){
   return '<div class="modal-backdrop" onclick="closeEditHistory()">' +
     '<div class="modal-sheet" onclick="event.stopPropagation()">' +
       '<p style="margin:0 0 4px;font-size:16px;font-weight:700;">Editar viaje</p>' +
-      '<p style="margin:0 0 16px;font-size:12px;color:var(--text-secondary);">' + display + '</p>' +
+      '<label class="field-label" style="margin-top:8px;">Fecha</label>' +
+      '<input type="date" id="hist-date" value="' + h.dateISO + '" style="margin-bottom:16px;" />' +
       rows +
       '<div style="display:flex;gap:8px;margin-top:6px;">' +
         '<button class="btn-secondary" style="flex:1;" onclick="closeEditHistory()">Cancelar</button>' +
         '<button class="btn-primary" style="flex:1;" onclick="saveHistoryEdit(\'' + h.dateISO + '\')">Guardar</button>' +
       '</div>' +
+      '<button class="btn-secondary" style="width:100%;margin-top:8px;color:var(--danger);border-color:var(--danger);" onclick="deleteHistoryEntry(\'' + h.dateISO + '\')">Borrar viaje</button>' +
     '</div>' +
   '</div>';
 }
@@ -1495,6 +1550,8 @@ function renderAjustes(){
       '<input type="text" value="' + me.car.plate + '" onchange="updateCar(\'' + me.id + '\',\'plate\',this.value)" />' +
       '<label class="field-label">Direccion</label>' +
       '<input type="text" value="' + me.address + '" onchange="updateAddress(\'' + me.id + '\', this.value)" />';
+    var yaTieneToken = pushTokens.some(function(t){ return t.userId === me.id; });
+    html += '<button class="btn-secondary" style="width:100%;margin-top:12px;" onclick="pedirNotificaciones()">' + (yaTieneToken ? "Notificaciones activadas en este celular" : "Activar notificaciones en este celular") + '</button>';
     html += '</div>';
   }
 
@@ -1585,9 +1642,10 @@ function startApp(){
         if (data.sinAuto) sinAuto = data.sinAuto;
         if (data.enCamino) enCamino = data.enCamino;
         if (data.arrived) arrived = data.arrived;
+        if (data.pushTokens) pushTokens = data.pushTokens;
         players.forEach(function(p){ if (!(p.id in confirmed)) confirmed[p.id] = true; });
       } else {
-        docRef.set({ players: defaultPlayers, poolHistory: importedHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino, arrived: arrived });
+        docRef.set({ players: defaultPlayers, poolHistory: importedHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino, arrived: arrived, pushTokens: pushTokens });
       }
       render();
     }, function(err){
