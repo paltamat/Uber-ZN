@@ -391,13 +391,13 @@ function loadState(){
 }
 function saveState(){
   if (FIREBASE_ENABLED) {
-    docRef.set({ players: players, poolHistory: poolHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino }).catch(function(e){
+    docRef.set({ players: players, poolHistory: poolHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino, arrived: arrived }).catch(function(e){
       console.error("Error guardando en Firestore:", e);
     });
     return;
   }
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ players: players, poolHistory: poolHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ players: players, poolHistory: poolHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino, arrived: arrived }));
   } catch (e) { /* almacenamiento no disponible */ }
 }
 
@@ -425,7 +425,9 @@ var result = null;
 var ratingsInput = {};
 var weekSaved = false;
 var activeTab = "semana";
+var ICON_EXIT = '<svg viewBox="0 0 92 92" fill="currentColor"><path d="M60,60.7V79c0,2.2-1.6,4-3.8,4H4c-2.2,0-4-1.8-4-4V13c0-2.2,1.8-4,4-4h52.2c2.2,0,3.8,1.8,3.8,4v18.3 c0,2.2-1.8,4-4,4s-4-1.8-4-4V17H8v58h44V60.7c0-2.2,1.8-4,4-4S60,58.5,60,60.7z M90.8,43L75.2,27.2c-1.6-1.6-4.1-1.6-5.7,0 c-1.6,1.6-1.6,4.1,0,5.7l8.9,9L29.9,42c-2.2,0-4,1.8-4,4c0,2.2,1.8,4,4,4c0,0,0,0,0,0l48.5-0.1l-8.9,9c-1.6,1.6-1.5,4.1,0,5.7 c0.8,0.8,1.8,1.2,2.8,1.2c1,0,2.1-0.4,2.8-1.2l15.7-15.8C92.4,47.1,92.4,44.6,90.8,43z"/></svg>';
 var enCamino = (saved && saved.enCamino) ? saved.enCamino : {};
+var arrived = (saved && saved.arrived) ? saved.arrived : {};
 var carColors = ["#0A84FF", "#FF9F0A"];
 var editingProfileId = null;
 var viewingRatingsId = null;
@@ -568,7 +570,6 @@ function calcularSemana(){
       result = { loading: true };
       weekSaved = true;
       ratingsInput = {};
-      enCamino = {};
       render();
       Promise.all(carsFromHistory.map(function(c){ return getRouteForCar(c.driver, c.passengers); })).then(function(routes){
         result = { cars: carsFromHistory.map(function(c, i){ return Object.assign({}, c, { route: routes[i] }); }) };
@@ -618,6 +619,7 @@ function calcularSemana(){
   ratingsInput = {};
   weekSaved = false;
   enCamino = {};
+  arrived = {};
   render();
 
   Promise.all(carsBase.map(function(c){ return getRouteForCar(c.driver, c.passengers); })).then(function(routes){
@@ -806,6 +808,15 @@ function showToast(msg){
 function setCurrentUser(id){ currentUserId = id; saveCurrentUser(id); render(); }
 function changeCurrentUser(){ currentUserId = null; saveCurrentUser(null); render(); }
 function avisarEnCamino(id){ var now = new Date(); enCamino[id] = now.getHours()*60 + now.getMinutes(); saveState(); render(); }
+function toggleArrived(passengerId){
+  if (!result || !result.cars) return;
+  var car = result.cars.filter(function(c){ return c.passengers.some(function(p){ return p.id === passengerId; }); })[0];
+  if (!car) return;
+  if (enCamino[car.driver.id] === undefined) return;
+  arrived[passengerId] = !arrived[passengerId];
+  saveState();
+  render();
+}
 function openEditProfile(id){ editingProfileId = id; render(); }
 function closeEditProfile(){ editingProfileId = null; render(); }
 
@@ -947,17 +958,29 @@ function playerCardMini(p){
 function routeBlock(c, color){
   var route = c.route;
   var real = enCamino[c.driver.id];
-  var base = (real !== undefined) ? real : route.plannedDepartureMin;
+  var canMark = real !== undefined;
+  var base = canMark ? real : route.plannedDepartureMin;
   var stops = route.legs.map(function(l,i){
     var isVenue = i === route.legs.length - 1;
     var arrival = formatTime(base + l.arrivalRelative);
+    var arriveBtn = "";
+    if (!isVenue){
+      var passenger = c.passengers.filter(function(p){ return p.name === l.name; })[0];
+      if (passenger){
+        var isArrived = !!arrived[passenger.id];
+        var btnColor = isArrived ? "var(--success)" : "var(--text-tertiary)";
+        var disabledStyle = canMark ? "cursor:pointer;" : "cursor:not-allowed;opacity:0.35;pointer-events:none;";
+        arriveBtn = '<button onclick="toggleArrived(\'' + passenger.id + '\')" aria-label="Llegue a la puerta" style="margin-left:auto;border:none;background:none;padding:0;' + disabledStyle + 'color:' + btnColor + ';display:flex;align-items:center;"><span class="stat-icon" style="width:18px;height:18px;">' + ICON_EXIT + '</span></button>';
+      }
+    }
     return '<div class="route-stop">' +
       '<span class="route-time" style="color:' + color + ';">' + arrival + '</span>' +
       '<i class="ti ti-' + (isVenue ? "flag-3" : "map-pin") + '"></i>' +
       '<span>' + l.name + (isVenue ? "" : " &middot; " + l.address) + '</span>' +
+      arriveBtn +
     '</div>';
   }).join("");
-  var headerLabel = (real !== undefined)
+  var headerLabel = canMark
     ? '<span class="pill pill-green"><i class="ti ti-circle-check"></i>Salio a las ' + formatTime(real) + '</span>'
     : '<span class="pill pill-gray">Plan: sale a las ' + formatTime(route.plannedDepartureMin) + '</span>';
   return '<div class="divider"></div><div style="margin-bottom:6px;">' + headerLabel + '</div>' + stops;
@@ -1550,9 +1573,10 @@ function startApp(){
         if (data.confirmed) confirmed = data.confirmed;
         if (data.sinAuto) sinAuto = data.sinAuto;
         if (data.enCamino) enCamino = data.enCamino;
+        if (data.arrived) arrived = data.arrived;
         players.forEach(function(p){ if (!(p.id in confirmed)) confirmed[p.id] = true; });
       } else {
-        docRef.set({ players: defaultPlayers, poolHistory: importedHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino });
+        docRef.set({ players: defaultPlayers, poolHistory: importedHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino, arrived: arrived });
       }
       render();
     }, function(err){
