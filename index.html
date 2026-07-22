@@ -163,8 +163,8 @@
   .car-header { display: flex; align-items: center; gap: 8px; }
   .car-title { font-size: 15px; font-weight: 700; margin: 0; }
 
-  .route-stop { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 0; color: var(--text-secondary); }
-  .route-time { width: 46px; font-weight: 700; color: var(--text-primary); flex-shrink: 0; }
+  .route-stop { display: flex; align-items: center; gap: 12px; font-size: 16px; padding: 12px 0; color: var(--text-secondary); }
+  .route-time { width: 62px; font-weight: 700; font-size: 17px; color: var(--text-primary); flex-shrink: 0; }
   .divider { border-top: 1px solid var(--border-soft); margin: 10px 0; }
 
   .star-btn { border: none; background: none; padding: 2px; cursor: pointer; color: var(--warning); }
@@ -450,6 +450,7 @@ function getUpcomingThursday(now){
 }
 var matchDateISO = toISODate(getUpcomingThursday(new Date()));
 var matchTime = "21:45";
+var carsOverride = "auto";
 
 /* ---------- Utilidades ---------- */
 function ratioDe(p){
@@ -595,7 +596,8 @@ function calcularSemana(){
     if (lastA > lastB) return 1;
     return 0;
   });
-  var dosAutos = conf.length === 6 && ordenados.length >= 2;
+  var quiereDosAutos = carsOverride === "2" ? true : (carsOverride === "1" ? false : conf.length === 6);
+  var dosAutos = quiereDosAutos && ordenados.length >= 2;
   var drivers = dosAutos ? [ordenados[0], ordenados[1]] : [ordenados[0]];
   var cars;
   if (!dosAutos){
@@ -664,6 +666,7 @@ function guardarSemana(){
   });
   weekSaved = true;
   sinAuto = {};
+  carsOverride = "auto";
   saveState();
   render();
 }
@@ -746,6 +749,7 @@ function toggleGroup(id){ players = players.map(function(p){ return p.id===id ? 
 function setRating(driverId, n){ ratingsInput[driverId] = n; render(); }
 function setTab(t){ activeTab = t; render(); }
 function setMatchDate(v){ matchDateISO = v; render(); }
+function setCarsOverride(v){ carsOverride = v; render(); }
 function setMatchTime(v){
   matchTime = v;
   if (result && result.cars){
@@ -970,13 +974,13 @@ function routeBlock(c, color){
         var isArrived = !!arrived[passenger.id];
         var btnColor = isArrived ? "var(--success)" : "var(--text-tertiary)";
         var disabledStyle = canMark ? "cursor:pointer;" : "cursor:not-allowed;opacity:0.35;pointer-events:none;";
-        arriveBtn = '<button onclick="toggleArrived(\'' + passenger.id + '\')" aria-label="Llegue a la puerta" style="margin-left:auto;border:none;background:none;padding:0;' + disabledStyle + 'color:' + btnColor + ';display:flex;align-items:center;"><span class="stat-icon" style="width:18px;height:18px;">' + ICON_EXIT + '</span></button>';
+        arriveBtn = '<button onclick="toggleArrived(\'' + passenger.id + '\')" aria-label="Llegue a la puerta" style="margin-left:auto;border:none;background:none;padding:0;' + disabledStyle + 'color:' + btnColor + ';display:flex;align-items:center;"><span class="stat-icon" style="width:30px;height:30px;">' + ICON_EXIT + '</span></button>';
       }
     }
     return '<div class="route-stop">' +
       '<span class="route-time" style="color:' + color + ';">' + arrival + '</span>' +
-      '<i class="ti ti-' + (isVenue ? "flag-3" : "map-pin") + '"></i>' +
-      '<span>' + l.name + (isVenue ? "" : " &middot; " + l.address) + '</span>' +
+      '<i class="ti ti-' + (isVenue ? "flag-3" : "map-pin") + '" style="font-size:20px;"></i>' +
+      '<span style="font-size:16px;font-weight:600;color:var(--text-primary);">' + l.name + '</span>' +
       arriveBtn +
     '</div>';
   }).join("");
@@ -1099,7 +1103,14 @@ function renderSemana(){
   html += '<label class="field-label" style="margin-top:0;">Fecha</label>';
   html += '<input type="date" value="' + matchDateISO + '" onchange="setMatchDate(this.value)" style="margin-bottom:12px;" />';
   html += '<label class="field-label">Llegada</label>';
-  html += '<input type="time" value="' + matchTime + '" onchange="setMatchTime(this.value)" />';
+  html += '<input type="time" value="' + matchTime + '" onchange="setMatchTime(this.value)" style="margin-bottom:12px;" />';
+  html += '<label class="field-label">Cantidad de autos</label>';
+  html += '<div style="display:flex;gap:6px;">';
+  [["auto","Automatico"],["1","1 auto"],["2","2 autos"]].forEach(function(opt){
+    var isActive = carsOverride === opt[0];
+    html += '<button onclick="setCarsOverride(\'' + opt[0] + '\')" style="flex:1;padding:9px 6px;border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer;border:1px solid ' + (isActive ? "var(--accent)" : "var(--border)") + ';background:' + (isActive ? "var(--accent-soft)" : "var(--bg-elevated-2)") + ';color:' + (isActive ? "var(--accent)" : "var(--text-secondary)") + ';">' + opt[1] + '</button>';
+  });
+  html += '</div>';
   html += '</div>';
 
   html += players.map(playerCardMini).join("");
