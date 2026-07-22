@@ -383,7 +383,7 @@ if (FIREBASE_ENABLED) {
 
 /* IMPORTANTE: reemplazar por la clave VAPID generada en
    Firebase Console > Configuracion del proyecto > Cloud Messaging > Certificados push web */
-var VAPID_KEY = "TU_VAPID_KEY";
+var VAPID_KEY = "BCptLJnCCtew61VC_Zutja2shgxl2fCsoILRpwfk9xQ2bKBOPbdjfj5DgwOXLDpMTDktRkqxZx5f6Ze9_hPBgik";
 
 function pedirNotificaciones(){
   if (!FIREBASE_ENABLED || !currentUserId) { alert("Elegi tu perfil primero en Ajustes."); return; }
@@ -396,16 +396,16 @@ function pedirNotificaciones(){
     Notification.requestPermission().then(function(permission){
       if (permission !== "granted"){ alert("No diste permiso de notificaciones."); return; }
       messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: registration }).then(function(token){
-        if (!token) { alert("No se pudo generar el token de notificaciones."); return; }
+        if (!token) { alert("No se pudo generar el token de notificaciones (token vacio)."); return; }
         guardarPushToken(token);
       }).catch(function(err){
         console.error("Error obteniendo token FCM:", err);
-        alert("No se pudo activar las notificaciones. Revisa que la clave VAPID este bien cargada.");
+        alert("Error real: " + (err && err.code ? err.code : "") + " - " + (err && err.message ? err.message : err));
       });
     });
   }).catch(function(err){
     console.error("Error registrando service worker:", err);
-    alert("No se pudo registrar el service worker (firebase-messaging-sw.js). Asegurate de que ese archivo este subido junto al index.html.");
+    alert("Error registrando service worker: " + (err && err.message ? err.message : err));
   });
 }
 
