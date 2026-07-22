@@ -379,16 +379,6 @@ var docRef = null;
 if (FIREBASE_ENABLED) {
   firebase.initializeApp(firebaseConfig);
   docRef = firebase.firestore().collection("pool-jueves").doc("shared-state");
-  try {
-    firebase.messaging().onMessage(function(payload){
-      var title = (payload.notification && payload.notification.title) || "Uber Zona Norte";
-      var body = (payload.notification && payload.notification.body) || "";
-      if ("Notification" in window && Notification.permission === "granted"){
-        new Notification(title, { body: body });
-      }
-      showToast(body || title);
-    });
-  } catch (e) { /* messaging no disponible en este navegador */ }
 }
 
 /* IMPORTANTE: reemplazar por la clave VAPID generada en
@@ -403,6 +393,16 @@ function pedirNotificaciones(){
   }
   navigator.serviceWorker.register("firebase-messaging-sw.js").then(function(registration){
     var messaging = firebase.messaging();
+    try {
+      messaging.onMessage(function(payload){
+        var title = (payload.notification && payload.notification.title) || "Uber Zona Norte";
+        var body = (payload.notification && payload.notification.body) || "";
+        if ("Notification" in window && Notification.permission === "granted"){
+          new Notification(title, { body: body });
+        }
+        showToast(body || title);
+      });
+    } catch (e) { /* no bloquea el resto del registro */ }
     Notification.requestPermission().then(function(permission){
       if (permission !== "granted"){ alert("No diste permiso de notificaciones."); return; }
       messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: registration }).then(function(token){
