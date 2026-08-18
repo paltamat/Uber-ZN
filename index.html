@@ -61,6 +61,8 @@
   .tabbar {
     position: fixed; left: 0; right: 0; bottom: 0; width: 100%;
     height: 78px; z-index: 50;
+    -webkit-transform: translate3d(0,0,0); transform: translate3d(0,0,0);
+    will-change: transform;
   }
   .tabbar-bg {
     position: absolute; inset: 0; display: flex; align-items: flex-start;
@@ -421,12 +423,12 @@ function pedirNotificaciones(){
 
 var MY_PUSH_TOKEN_KEY = "pool_jueves_my_push_token";
 function guardarPushToken(token){
-  var tokens = (pushTokens || []).filter(function(t){ return t.token !== token; });
-  tokens.push({ token: token, userId: currentUserId });
-  pushTokens = tokens;
+  withFreshSync(function(){
+    var tokens = (pushTokens || []).filter(function(t){ return t.token !== token; });
+    tokens.push({ token: token, userId: currentUserId });
+    pushTokens = tokens;
+  });
   try { localStorage.setItem(MY_PUSH_TOKEN_KEY, token); } catch (e) {}
-  saveState();
-  render();
   alert("Notificaciones activadas en este celular.");
 }
 
@@ -437,8 +439,9 @@ function getMyPushToken(){
 function desactivarNotificaciones(){
   var myToken = getMyPushToken();
   if (!myToken){ alert("Este celular no tiene notificaciones activadas."); return; }
-  pushTokens = (pushTokens || []).filter(function(t){ return t.token !== myToken; });
-  saveState();
+  withFreshSync(function(){
+    pushTokens = (pushTokens || []).filter(function(t){ return t.token !== myToken; });
+  });
   try { localStorage.removeItem(MY_PUSH_TOKEN_KEY); } catch (e) {}
   if (FIREBASE_ENABLED && firebase.messaging){
     try { firebase.messaging().deleteToken(); } catch (e) {}
@@ -466,6 +469,47 @@ function saveState(){
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ players: players, poolHistory: poolHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino, arrived: arrived, pushTokens: pushTokens }));
   } catch (e) { /* almacenamiento no disponible */ }
+}
+
+/* Trae siempre la version mas reciente del servidor antes de aplicar un cambio local,
+   para que un celular con datos viejos nunca pise lo que otro haya guardado mientras tanto. */
+function withFreshSync(mutateFn){
+  function aplicarYGuardarLocal(){
+    mutateFn();
+    saveState();
+    render();
+  }
+  if (FIREBASE_ENABLED && docRef){
+    firebase.firestore().runTransaction(function(transaction){
+      return transaction.get(docRef).then(function(doc){
+        if (doc.exists){
+          var data = doc.data();
+          if (data.players) players = data.players;
+          if (data.poolHistory) poolHistory = data.poolHistory;
+          if (data.venue) venue = Object.assign({}, venue, data.venue);
+          if (data.confirmed) confirmed = data.confirmed;
+          if (data.sinAuto) sinAuto = data.sinAuto;
+          if (data.enCamino) enCamino = data.enCamino;
+          if (data.arrived) arrived = data.arrived;
+          if (data.pushTokens) pushTokens = data.pushTokens;
+          players.forEach(function(p){ if (!(p.id in confirmed)) confirmed[p.id] = true; });
+        }
+        mutateFn();
+        transaction.set(docRef, {
+          players: players, poolHistory: poolHistory, venue: venue,
+          confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino,
+          arrived: arrived, pushTokens: pushTokens
+        });
+      });
+    }).then(function(){
+      render();
+    }).catch(function(e){
+      console.error("Error en transaccion de Firestore, guardando con lo local:", e);
+      aplicarYGuardarLocal();
+    });
+  } else {
+    aplicarYGuardarLocal();
+  }
 }
 
 var CURRENT_USER_KEY = "pool_jueves_current_user";
@@ -517,7 +561,7 @@ function getUpcomingThursday(now){
   return d;
 }
 var matchDateISO = toISODate(getUpcomingThursday(new Date()));
-var matchTime = "21:45";
+var matchTime = "21:50";
 var carsOverride = "auto";
 
 /* ---------- Utilidades ---------- */
@@ -624,33 +668,38 @@ function lastDriveDateOf(p){
   return "";
 }
 
-function calcularSemana(){
+function tryLoadExistingTrip(shouldScroll){
   var existing = poolHistory.filter(function(h){ return h.dateISO === matchDateISO && h.driverIds && h.driverIds.length; })[0];
-  if (existing){
-    var carsFromHistory = existing.driverIds.map(function(did, i){
-      var driver = players.filter(function(p){ return p.id === did; })[0];
-      if (!driver) return null;
-      var driverName = existing.drivers[i];
-      var passengerNames = (existing.passengers && existing.passengers[driverName]) || [];
-      var passengers = passengerNames.map(function(name){ return players.filter(function(p){ return p.name === name; })[0]; }).filter(Boolean);
-      return { driver: driver, passengers: passengers, colectivo: passengers.length === 4 };
-    }).filter(Boolean);
-    if (carsFromHistory.length){
-      result = { loading: true };
-      weekSaved = true;
-      ratingsInput = {};
-      render();
-      Promise.all(carsFromHistory.map(function(c){ return getRouteForCar(c.driver, c.passengers); })).then(function(routes){
-        result = { cars: carsFromHistory.map(function(c, i){ return Object.assign({}, c, { route: routes[i] }); }) };
-        render();
-        setTimeout(function(){
-          var mapEl = document.querySelector(".map-wrap");
-          if (mapEl) mapEl.scrollIntoView({ behavior: "smooth", block: "center" });
-        }, 50);
-      });
-      return;
+  if (!existing) return false;
+  var carsFromHistory = existing.driverIds.map(function(did, i){
+    var driver = players.filter(function(p){ return p.id === did; })[0];
+    if (!driver) return null;
+    var driverName = existing.drivers[i];
+    var passengerNames = (existing.passengers && existing.passengers[driverName]) || [];
+    var passengers = passengerNames.map(function(name){ return players.filter(function(p){ return p.name === name; })[0]; }).filter(Boolean);
+    return { driver: driver, passengers: passengers, colectivo: passengers.length === 4 };
+  }).filter(Boolean);
+  if (!carsFromHistory.length) return false;
+
+  result = { loading: true };
+  weekSaved = true;
+  ratingsInput = {};
+  render();
+  Promise.all(carsFromHistory.map(function(c){ return getRouteForCar(c.driver, c.passengers); })).then(function(routes){
+    result = { cars: carsFromHistory.map(function(c, i){ return Object.assign({}, c, { route: routes[i] }); }) };
+    render();
+    if (shouldScroll){
+      setTimeout(function(){
+        var mapEl = document.querySelector(".map-wrap");
+        if (mapEl) mapEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 50);
     }
-  }
+  });
+  return true;
+}
+
+function calcularSemana(){
+  if (tryLoadExistingTrip(true)) return;
 
   var conf = players.filter(function(p){ return confirmed[p.id]; });
   if (conf.length < 2){ result = { error: "Necesitas al menos 2 confirmados para armar el pool." }; render(); return; }
@@ -704,13 +753,6 @@ function calcularSemana(){
 
 function guardarSemana(){
   if (!result || result.error) return;
-  var yaExiste = poolHistory.some(function(h){ return h.dateISO === matchDateISO && h.driverIds && h.driverIds.length; });
-  if (yaExiste){
-    alert("Ya hay una semana guardada para esta fecha (alguien ya designo choferes). Revisa el Historial en vez de guardar de nuevo.");
-    weekSaved = true;
-    render();
-    return;
-  }
   var histEntry = {
     fecha: isoToDisplay(matchDateISO),
     dateISO: matchDateISO,
@@ -720,23 +762,30 @@ function guardarSemana(){
     passengers: {}
   };
   result.cars.forEach(function(c){ histEntry.passengers[c.driver.name] = c.passengers.map(function(p){return p.name;}); });
-  poolHistory = [histEntry].concat(poolHistory);
+  var carsSnapshot = result.cars;
 
-  players = players.map(function(p){
-    var asDriver = result.cars.filter(function(c){ return c.driver.id === p.id; })[0];
-    var asPassenger = result.cars.filter(function(c){ return c.passengers.some(function(x){ return x.id === p.id; }); })[0];
-    if (asDriver){
-      var nuevoColectivo = asDriver.colectivo ? p.colectivos + 1 : p.colectivos;
-      return Object.assign({}, p, { viajesChofer: p.viajesChofer + 1, colectivos: nuevoColectivo });
+  withFreshSync(function(){
+    var yaExiste = poolHistory.some(function(h){ return h.dateISO === matchDateISO && h.driverIds && h.driverIds.length; });
+    if (yaExiste){
+      alert("Ya hay una semana guardada para esta fecha (alguien ya designo choferes). Revisa el Historial en vez de guardar de nuevo.");
+      weekSaved = true;
+      return;
     }
-    if (asPassenger){ return Object.assign({}, p, { viajesPasajero: p.viajesPasajero + 1 }); }
-    return p;
+    poolHistory = [histEntry].concat(poolHistory);
+    players = players.map(function(p){
+      var asDriver = carsSnapshot.filter(function(c){ return c.driver.id === p.id; })[0];
+      var asPassenger = carsSnapshot.filter(function(c){ return c.passengers.some(function(x){ return x.id === p.id; }); })[0];
+      if (asDriver){
+        var nuevoColectivo = asDriver.colectivo ? p.colectivos + 1 : p.colectivos;
+        return Object.assign({}, p, { viajesChofer: p.viajesChofer + 1, colectivos: nuevoColectivo });
+      }
+      if (asPassenger){ return Object.assign({}, p, { viajesPasajero: p.viajesPasajero + 1 }); }
+      return p;
+    });
+    weekSaved = true;
+    sinAuto = {};
+    carsOverride = "auto";
   });
-  weekSaved = true;
-  sinAuto = {};
-  carsOverride = "auto";
-  saveState();
-  render();
 }
 
 function findLastThursdayEntry(){
@@ -780,42 +829,61 @@ function myRatingForDriver(entry, driverId){
 
 function submitRating(driverId, n){
   if (!currentUserId) return;
-  var entrySnapshot = findLastThursdayEntry();
-  if (entrySnapshot && hasRatedDriver(entrySnapshot, driverId)) return;
+  var entrySnapshotCheck = findLastThursdayEntry();
+  if (entrySnapshotCheck && hasRatedDriver(entrySnapshotCheck, driverId)) return;
 
-  function applyLocally(freshPlayers, freshHistory){
-    players = freshPlayers.map(function(p){ return p.id === driverId ? Object.assign({}, p, { ratings: p.ratings.concat([n]) }) : p; });
-    poolHistory = freshHistory;
-    var entry = poolHistory.filter(function(h){ return entrySnapshot && h.dateISO === entrySnapshot.dateISO; })[0];
+  function applyLocally(){
+    var entry = findLastThursdayEntry();
+    players = players.map(function(p){ return p.id === driverId ? Object.assign({}, p, { ratings: p.ratings.concat([n]) }) : p; });
     if (entry){
       if (!entry.votedByDriver) entry.votedByDriver = {};
       if (!entry.votedByDriver[driverId]) entry.votedByDriver[driverId] = {};
       entry.votedByDriver[driverId][currentUserId] = n;
     }
     ratingsInput[driverId] = n;
-    saveState();
-    render();
   }
 
   if (FIREBASE_ENABLED && docRef){
-    docRef.get().then(function(doc){
-      var data = doc.exists ? doc.data() : {};
-      var freshPlayers = data.players || players;
-      var freshHistory = data.poolHistory || poolHistory;
-      applyLocally(freshPlayers, freshHistory);
-    }).catch(function(){
-      applyLocally(players, poolHistory);
+    firebase.firestore().runTransaction(function(transaction){
+      return transaction.get(docRef).then(function(doc){
+        if (doc.exists){
+          var data = doc.data();
+          if (data.players) players = data.players;
+          if (data.poolHistory) poolHistory = data.poolHistory;
+        }
+        var entry = findLastThursdayEntry();
+        if (entry && hasRatedDriver(entry, driverId)) return;
+        applyLocally();
+        transaction.set(docRef, {
+          players: players, poolHistory: poolHistory, venue: venue,
+          confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino,
+          arrived: arrived, pushTokens: pushTokens
+        });
+      });
+    }).then(function(){
+      render();
+    }).catch(function(e){
+      console.error("Error en transaccion de calificacion:", e);
+      applyLocally();
+      saveState();
+      render();
     });
   } else {
-    applyLocally(players, poolHistory);
+    applyLocally();
+    saveState();
+    render();
   }
 }
 
-function toggleConfirm(id){ confirmed[id] = !confirmed[id]; result = null; weekSaved = false; saveState(); render(); }
-function toggleSinAuto(id){ sinAuto[id] = !sinAuto[id]; saveState(); render(); }
-function toggleGroup(id){ players = players.map(function(p){ return p.id===id ? Object.assign({}, p, { group: p.group==="A"?"B":"A" }) : p; }); saveState(); render(); }
+function toggleConfirm(id){ withFreshSync(function(){ confirmed[id] = !confirmed[id]; result = null; weekSaved = false; }); }
+function toggleSinAuto(id){ withFreshSync(function(){ sinAuto[id] = !sinAuto[id]; }); }
+function toggleGroup(id){ withFreshSync(function(){ players = players.map(function(p){ return p.id===id ? Object.assign({}, p, { group: p.group==="A"?"B":"A" }) : p; }); }); }
 function setRating(driverId, n){ ratingsInput[driverId] = n; render(); }
-function setTab(t){ activeTab = t; render(); }
+function setTab(t){
+  activeTab = t;
+  if (t === "semana" && !result) { tryLoadExistingTrip(false); }
+  render();
+}
 function setMatchDate(v){ matchDateISO = v; render(); }
 function setCarsOverride(v){ carsOverride = v; render(); }
 function setMatchTime(v){
@@ -828,20 +896,20 @@ function setMatchTime(v){
   }
   render();
 }
-function updateCar(id, field, value){ players = players.map(function(p){ if (p.id!==id) return p; var car = Object.assign({}, p.car); car[field] = value; return Object.assign({}, p, { car: car }); }); saveState(); showToast("Guardado"); }
-function updateAddress(id, value){ players = players.map(function(p){ return p.id===id ? Object.assign({}, p, { address: value }) : p; }); saveState(); showToast("Guardado"); }
+function updateCar(id, field, value){ withFreshSync(function(){ players = players.map(function(p){ if (p.id!==id) return p; var car = Object.assign({}, p.car); car[field] = value; return Object.assign({}, p, { car: car }); }); }); showToast("Guardado"); }
+function updateAddress(id, value){ withFreshSync(function(){ players = players.map(function(p){ return p.id===id ? Object.assign({}, p, { address: value }) : p; }); }); showToast("Guardado"); }
 
 function updatePhoto(id, dataUrl){
-  players = players.map(function(p){ return p.id===id ? Object.assign({}, p, { photo: dataUrl }) : p; });
-  saveState();
+  withFreshSync(function(){
+    players = players.map(function(p){ return p.id===id ? Object.assign({}, p, { photo: dataUrl }) : p; });
+  });
   showToast("Foto actualizada");
-  render();
 }
 function removePhoto(id){
-  players = players.map(function(p){ if (p.id!==id) return p; var np = Object.assign({}, p); delete np.photo; return np; });
-  saveState();
+  withFreshSync(function(){
+    players = players.map(function(p){ if (p.id!==id) return p; var np = Object.assign({}, p); delete np.photo; return np; });
+  });
   showToast("Foto eliminada");
-  render();
 }
 function handlePhotoUpload(id, input){
   var file = input.files && input.files[0];
@@ -879,15 +947,20 @@ function showToast(msg){
 }
 function setCurrentUser(id){ currentUserId = id; saveCurrentUser(id); render(); }
 function changeCurrentUser(){ currentUserId = null; saveCurrentUser(null); render(); }
-function avisarEnCamino(id){ var now = new Date(); enCamino[id] = now.getHours()*60 + now.getMinutes(); saveState(); render(); }
+function avisarEnCamino(id){
+  var now = new Date();
+  var minutos = now.getHours()*60 + now.getMinutes();
+  withFreshSync(function(){ enCamino[id] = minutos; });
+}
 function toggleArrived(passengerId){
   if (!result || !result.cars) return;
   var car = result.cars.filter(function(c){ return c.passengers.some(function(p){ return p.id === passengerId; }); })[0];
   if (!car) return;
-  if (enCamino[car.driver.id] === undefined) return;
-  arrived[passengerId] = !arrived[passengerId];
-  saveState();
-  render();
+  var driverId = car.driver.id;
+  withFreshSync(function(){
+    if (enCamino[driverId] === undefined) return;
+    arrived[passengerId] = !arrived[passengerId];
+  });
 }
 function openEditProfile(id){ editingProfileId = id; render(); }
 function closeEditProfile(){ editingProfileId = null; render(); }
@@ -896,10 +969,10 @@ function addPlayer(){
   var name = prompt("Nombre del nuevo jugador:");
   if (!name) return;
   var id = name.toLowerCase().replace(/[^a-z0-9]/g, "") + "_" + Date.now();
-  players = players.concat([{ id:id, name:name.trim(), group:"B", car:{model:"Sin auto", plate:"-"}, viajesChofer:0, viajesPasajero:0, colectivos:0, ratings:[], address:"Sin direccion", lat:venue.lat, lng:venue.lng }]);
-  confirmed[id] = true;
-  saveState();
-  render();
+  withFreshSync(function(){
+    players = players.concat([{ id:id, name:name.trim(), group:"B", car:{model:"Sin auto", plate:"-"}, viajesChofer:0, viajesPasajero:0, colectivos:0, ratings:[], address:"Sin direccion", lat:venue.lat, lng:venue.lng }]);
+    confirmed[id] = true;
+  });
 }
 function removeSelectedPlayer(){
   var sel = document.getElementById("remove-player-select");
@@ -910,15 +983,14 @@ function removePlayer(id){
   var p = players.filter(function(x){ return x.id === id; })[0];
   if (!p) return;
   if (!confirm("Seguro que queres sacar a " + p.name + " del pool? Se pierde su historial.")) return;
-  players = players.filter(function(x){ return x.id !== id; });
-  delete confirmed[id];
+  withFreshSync(function(){
+    players = players.filter(function(x){ return x.id !== id; });
+    delete confirmed[id];
+  });
   if (currentUserId === id){ currentUserId = null; saveCurrentUser(null); }
-  saveState();
-  render();
 }
 function updateVenue(field, value){
-  venue[field] = value;
-  saveState();
+  withFreshSync(function(){ venue[field] = value; });
   showToast("Guardado");
 }
 function exportBackup(){
@@ -965,13 +1037,13 @@ function saveEditProfile(id){
   var model = document.getElementById("edit-model").value.trim();
   var plate = document.getElementById("edit-plate").value.trim();
   var address = document.getElementById("edit-address").value.trim();
-  players = players.map(function(p){
-    if (p.id !== id) return p;
-    return Object.assign({}, p, { name: name || p.name, address: address || p.address, car: { model: model || p.car.model, plate: plate || p.car.plate } });
+  withFreshSync(function(){
+    players = players.map(function(p){
+      if (p.id !== id) return p;
+      return Object.assign({}, p, { name: name || p.name, address: address || p.address, car: { model: model || p.car.model, plate: plate || p.car.plate } });
+    });
   });
-  saveState();
   editingProfileId = null;
-  render();
 }
 
 /* ---------- Render: tabs ---------- */
@@ -1202,10 +1274,10 @@ function renderSemana(){
     if (!weekSaved){
       html += '<div style="display:flex;gap:8px;margin-top:14px;">';
       html += '<button class="btn-secondary" style="flex:1;" onclick="calcularSemana()"><i class="ti ti-refresh"></i> Volver a designar</button>';
-      html += '<button class="btn-primary" onclick="guardarSemana()" style="flex:1;background:var(--bg-elevated-2);color:var(--text-primary);"><i class="ti ti-check"></i>Confirmar viaje</button>';
+      html += '<button class="btn-primary" onclick="guardarSemana()" style="flex:1;background:var(--bg-elevated-2);color:var(--text-primary);"><i class="ti ti-check"></i>Archivar viaje</button>';
       html += '</div>';
     } else {
-      html += '<p style="font-size:13px;color:var(--success);margin-top:8px;display:flex;align-items:center;gap:6px;"><i class="ti ti-trophy"></i>Viaje confirmado.</p>';
+      html += '<p style="font-size:13px;color:var(--success);margin-top:8px;display:flex;align-items:center;gap:6px;"><i class="ti ti-trophy"></i>Viaje archivado.</p>';
     }
   }
   return html;
@@ -1458,11 +1530,6 @@ function applyEntryStats(h){
 }
 
 function saveHistoryEdit(dateISO){
-  var entry = poolHistory.filter(function(h){ return h.dateISO === dateISO; })[0];
-  if (!entry) return;
-
-  reverseEntryStats(entry);
-
   var newDrivers = [], newDriverIds = [], newPassengerNames = [];
   players.forEach(function(p){
     var sel = document.getElementById("hist-role-" + p.id);
@@ -1482,31 +1549,34 @@ function saveHistoryEdit(dateISO){
     });
   }
 
-  entry.drivers = newDrivers;
-  entry.driverIds = newDriverIds;
-  entry.passengers = newPassengersByDriver;
-
   var dateInput = document.getElementById("hist-date");
-  if (dateInput && dateInput.value && dateInput.value !== entry.dateISO){
-    entry.dateISO = dateInput.value;
-    entry.fecha = isoToDisplay(dateInput.value);
-  }
+  var newDateISO = (dateInput && dateInput.value) ? dateInput.value : null;
 
-  applyEntryStats(entry);
-  saveState();
-  editingHistoryDate = null;
-  render();
+  withFreshSync(function(){
+    var entry = poolHistory.filter(function(h){ return h.dateISO === dateISO; })[0];
+    if (!entry) return;
+    reverseEntryStats(entry);
+    entry.drivers = newDrivers;
+    entry.driverIds = newDriverIds;
+    entry.passengers = newPassengersByDriver;
+    if (newDateISO && newDateISO !== entry.dateISO){
+      entry.dateISO = newDateISO;
+      entry.fecha = isoToDisplay(newDateISO);
+    }
+    applyEntryStats(entry);
+    editingHistoryDate = null;
+  });
 }
 
 function deleteHistoryEntry(dateISO){
-  var entry = poolHistory.filter(function(h){ return h.dateISO === dateISO; })[0];
-  if (!entry) return;
   if (!confirm("Seguro que queres borrar este viaje del historial? Se van a restar los viajes correspondientes del ratio de cada uno.")) return;
-  reverseEntryStats(entry);
-  poolHistory = poolHistory.filter(function(h){ return h.dateISO !== dateISO; });
-  saveState();
-  editingHistoryDate = null;
-  render();
+  withFreshSync(function(){
+    var entry = poolHistory.filter(function(h){ return h.dateISO === dateISO; })[0];
+    if (!entry) return;
+    reverseEntryStats(entry);
+    poolHistory = poolHistory.filter(function(h){ return h.dateISO !== dateISO; });
+    editingHistoryDate = null;
+  });
 }
 
 function editHistoryModal(){
@@ -1681,6 +1751,7 @@ function startApp(){
       } else {
         docRef.set({ players: defaultPlayers, poolHistory: importedHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino, arrived: arrived, pushTokens: pushTokens });
       }
+      if (activeTab === "semana" && !result) { tryLoadExistingTrip(false); }
       render();
     }, function(err){
       console.error("Error conectando a Firestore:", err);
