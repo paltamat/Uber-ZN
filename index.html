@@ -739,13 +739,13 @@ function calcularSemana(){
   result = { loading: true };
   ratingsInput = {};
   weekSaved = false;
-  enCamino = {};
-  arrived = {};
   render();
 
   Promise.all(carsBase.map(function(c){ return getRouteForCar(c.driver, c.passengers); })).then(function(routes){
     result = { cars: carsBase.map(function(c, i){ return Object.assign({}, c, { route: routes[i] }); }) };
     withFreshSync(function(){
+      enCamino = {};
+      arrived = {};
       currentTrip = {
         dateISO: matchDateISO,
         cars: carsBase.map(function(c){
