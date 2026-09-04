@@ -387,49 +387,76 @@ if (FIREBASE_ENABLED) {
    Firebase Console > Configuracion del proyecto > Cloud Messaging > Certificados push web */
 var VAPID_KEY = "BCptLJnCCtew61VC_Zutja2shgxl2fCsoILRpwfk9xQ2bKBOPbdjfj5DgwOXLDpMTDktRkqxZx5f6Ze9_hPBgik";
 
-function pedirNotificaciones(){
-  if (!FIREBASE_ENABLED || !currentUserId) { alert("Elegi tu perfil primero en Ajustes."); return; }
-  if (!("Notification" in window) || !navigator.serviceWorker){
-    alert("Este navegador no soporta notificaciones push.");
+function registrarPush(silencioso){
+  if (!FIREBASE_ENABLED || !currentUserId){
+    if (!silencioso) alert("Elegi tu perfil primero en Ajustes.");
     return;
   }
+  if (!("Notification" in window) || !navigator.serviceWorker){
+    if (!silencioso) alert("Este navegador no soporta notificaciones push.");
+    return;
+  }
+  if (silencioso && Notification.permission !== "granted") return;
+
   navigator.serviceWorker.register("firebase-messaging-sw.js").then(function(registration){
     var messaging = firebase.messaging();
     try {
       messaging.onMessage(function(payload){
-        var title = (payload.notification && payload.notification.title) || "Uber Zona Norte";
-        var body = (payload.notification && payload.notification.body) || "";
+        var data = payload.data || {};
+        var title = data.title || "Uber Zona Norte";
+        var body = data.body || "";
         if ("Notification" in window && Notification.permission === "granted"){
-          new Notification(title, { body: body });
+          new Notification(title, { body: body, tag: data.tag || "uzn" });
         }
         showToast(body || title);
       });
     } catch (e) { /* no bloquea el resto del registro */ }
-    Notification.requestPermission().then(function(permission){
-      if (permission !== "granted"){ alert("No diste permiso de notificaciones."); return; }
+
+    function obtenerToken(){
       messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: registration }).then(function(token){
-        if (!token) { alert("No se pudo generar el token de notificaciones (token vacio)."); return; }
-        guardarPushToken(token);
+        if (!token){
+          if (!silencioso) alert("No se pudo generar el token de notificaciones (token vacio).");
+          return;
+        }
+        guardarPushToken(token, silencioso);
       }).catch(function(err){
         console.error("Error obteniendo token FCM:", err);
-        alert("Error real: " + (err && err.code ? err.code : "") + " - " + (err && err.message ? err.message : err));
+        if (!silencioso) alert("Error real: " + (err && err.code ? err.code : "") + " - " + (err && err.message ? err.message : err));
       });
-    });
+    }
+
+    if (Notification.permission === "granted"){
+      obtenerToken();
+    } else {
+      Notification.requestPermission().then(function(permission){
+        if (permission !== "granted"){
+          if (!silencioso) alert("No diste permiso de notificaciones.");
+          return;
+        }
+        obtenerToken();
+      });
+    }
   }).catch(function(err){
     console.error("Error registrando service worker:", err);
-    alert("Error registrando service worker: " + (err && err.message ? err.message : err));
+    if (!silencioso) alert("Error registrando service worker: " + (err && err.message ? err.message : err));
   });
 }
 
+function pedirNotificaciones(){ registrarPush(false); }
+
 var MY_PUSH_TOKEN_KEY = "pool_jueves_my_push_token";
-function guardarPushToken(token){
+function guardarPushToken(token, silencioso){
+  var tokenAnterior = getMyPushToken();
+  if (silencioso && tokenAnterior === token) return; // ya estaba al dia
   withFreshSync(function(){
-    var tokens = (pushTokens || []).filter(function(t){ return t.token !== token; });
+    var tokens = (pushTokens || []).filter(function(t){
+      return t.token !== token && t.token !== tokenAnterior;
+    });
     tokens.push({ token: token, userId: currentUserId });
     pushTokens = tokens;
   });
   try { localStorage.setItem(MY_PUSH_TOKEN_KEY, token); } catch (e) {}
-  alert("Notificaciones activadas en este celular.");
+  if (!silencioso) alert("Notificaciones activadas en este celular.");
 }
 
 function getMyPushToken(){
@@ -1772,6 +1799,12 @@ function startApp(){
   }
 }
 startApp();
+
+/* Renueva el token de notificaciones al abrir la app (los tokens se vencen
+   solos con el tiempo; si no se renuevan, dejan de llegar avisos). */
+setTimeout(function(){
+  try { registrarPush(true); } catch (e) { console.error("No se pudo renovar el token push:", e); }
+}, 3000);
 </script>
 </body>
 </html>
