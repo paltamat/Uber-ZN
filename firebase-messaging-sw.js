@@ -14,9 +14,12 @@ firebase.initializeApp({
 var messaging = firebase.messaging();
 
 messaging.onBackgroundMessage(function(payload){
-  var title = (payload.notification && payload.notification.title) || "Uber Zona Norte";
+  var data = payload.data || {};
+  var title = data.title || "Uber Zona Norte";
   var options = {
-    body: (payload.notification && payload.notification.body) || ""
+    body: data.body || "",
+    tag: data.tag || "uzn",
+    renotify: true
   };
   self.registration.showNotification(title, options);
 });
