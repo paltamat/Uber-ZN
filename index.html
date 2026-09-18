@@ -447,7 +447,13 @@ function pedirNotificaciones(){ registrarPush(false); }
 var MY_PUSH_TOKEN_KEY = "pool_jueves_my_push_token";
 function guardarPushToken(token, silencioso){
   var tokenAnterior = getMyPushToken();
-  if (silencioso && tokenAnterior === token) return; // ya estaba al dia
+  var yaRegistrado = (pushTokens || []).some(function(t){
+    return t.token === token && t.userId === currentUserId;
+  });
+  // Solo salteamos si el token no cambio Y ademas sigue registrado en la base
+  // compartida para este perfil. Si el servidor lo borro por vencido, o el
+  // usuario cambio de perfil, hay que volver a registrarlo.
+  if (silencioso && tokenAnterior === token && yaRegistrado) return;
   withFreshSync(function(){
     var tokens = (pushTokens || []).filter(function(t){
       return t.token !== token && t.token !== tokenAnterior;
@@ -1687,10 +1693,16 @@ function renderAjustes(){
       '<label class="field-label">Direccion</label>' +
       '<input type="text" value="' + me.address + '" onchange="updateAddress(\'' + me.id + '\', this.value)" />';
     var miToken = getMyPushToken();
-    if (miToken){
+    var registradoEnLaBase = !!miToken && (pushTokens || []).some(function(t){
+      return t.token === miToken && t.userId === me.id;
+    });
+    if (registradoEnLaBase){
       html += '<button class="btn-secondary" style="width:100%;margin-top:12px;color:var(--danger);border-color:var(--danger);" onclick="desactivarNotificaciones()">Desactivar notificaciones en este celular</button>';
     } else {
       html += '<button class="btn-secondary" style="width:100%;margin-top:12px;" onclick="pedirNotificaciones()">Activar notificaciones en este celular</button>';
+      if (miToken){
+        html += '<p style="margin:8px 0 0;font-size:12px;color:var(--warning);">Las notificaciones de este celular se vencieron. Tocá el boton para reactivarlas.</p>';
+      }
     }
     html += '</div>';
   }
