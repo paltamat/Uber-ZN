@@ -751,12 +751,18 @@ function distUnidadA(u, driver){
   return u.reduce(function(s, p){ return s + distKm(p, driver); }, 0) / u.length;
 }
 
+function ratioRedondeado(p){ return Math.round(ratioDe(p) * 1000) / 1000; }
+
 function lastDriveDateOf(p){
+  var ultima = "";
   for (var i = 0; i < poolHistory.length; i++){
     var h = poolHistory[i];
-    if (h.driverIds && h.driverIds.indexOf(p.id) !== -1) return h.dateISO || "";
+    if (h.driverIds && h.driverIds.indexOf(p.id) !== -1){
+      var f = h.dateISO || "";
+      if (f > ultima) ultima = f;
+    }
   }
-  return "";
+  return ultima;
 }
 
 function tryLoadExistingTrip(shouldScroll){
@@ -797,7 +803,9 @@ function calcularSemana(){
   var driverPool = conf.filter(function(p){ return !sinAuto[p.id]; });
   if (driverPool.length === 0){ result = { error: "Nadie tiene auto disponible esta semana." }; render(); return; }
   var ordenados = driverPool.slice().sort(function(a,b){
-    var diff = ratioDe(a) - ratioDe(b);
+    // Comparamos con 3 decimales (igual que se muestra en pantalla), asi dos
+    // ratios que se ven iguales se consideran empatados y define la antiguedad.
+    var diff = ratioRedondeado(a) - ratioRedondeado(b);
     if (diff !== 0) return diff;
     var lastA = lastDriveDateOf(a), lastB = lastDriveDateOf(b);
     if (lastA < lastB) return -1;
