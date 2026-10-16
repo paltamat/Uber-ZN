@@ -765,7 +765,78 @@ function lastDriveDateOf(p){
   return ultima;
 }
 
+/* ---------- Viaje en curso compartido ----------
+   El viaje designado se guarda completo (con horarios) en la base compartida.
+   Asi sobrevive a que iOS cierre la app en segundo plano, y todos ven
+   exactamente los mismos horarios en vez de que cada celular calcule los suyos. */
+var loadedTripSig = "";
+var lastSnapshotTripSig = "";
+
+function serializarRuta(route){
+  if (!route) return null;
+  return {
+    plannedDepartureMin: route.plannedDepartureMin,
+    live: !!route.live,
+    legs: (route.legs || []).map(function(l){
+      return { name: l.name, address: l.address || "", arrivalRelative: l.arrivalRelative, lat: l.lat, lng: l.lng };
+    })
+  };
+}
+
+function tripSig(trip){
+  if (!trip) return "";
+  return (trip.dateISO || "") + "#" + (trip.creado || "") + "#" +
+    (trip.cars || []).map(function(c){ return c.driverId + ":" + (c.passengerIds || []).join(","); }).join("|");
+}
+
+function restaurarViajeEnCurso(shouldScroll){
+  if (!currentTrip || currentTrip.dateISO !== matchDateISO || !Array.isArray(currentTrip.cars)) return false;
+  var cars = currentTrip.cars.map(function(c){
+    var driver = players.filter(function(p){ return p.id === c.driverId; })[0];
+    if (!driver || !c.route || !c.route.legs) return null;
+    var passengers = (c.passengerIds || []).map(function(id){
+      return players.filter(function(p){ return p.id === id; })[0];
+    }).filter(Boolean);
+    return {
+      driver: driver,
+      passengers: passengers,
+      colectivo: !!c.colectivo,
+      route: { plannedDepartureMin: c.route.plannedDepartureMin, legs: c.route.legs, live: false }
+    };
+  }).filter(Boolean);
+  if (!cars.length) return false;
+
+  if (currentTrip.matchTime) matchTime = currentTrip.matchTime;
+  loadedTripSig = tripSig(currentTrip);
+  weekSaved = poolHistory.some(function(h){ return h.dateISO === matchDateISO && h.driverIds && h.driverIds.length; });
+  ratingsInput = {};
+  result = { cars: cars };
+  render();
+
+  if (shouldScroll){
+    bajarAlMapa();
+  }
+
+  // Pedimos a Google solo el dibujo del recorrido para el mapa; los horarios
+  // quedan los guardados, asi no cambian al reabrir la app.
+  if (GOOGLE_MAPS_READY){
+    var sigAlPedir = loadedTripSig;
+    Promise.all(cars.map(function(c){ return getRouteForCar(c.driver, c.passengers); })).then(function(rutas){
+      if (loadedTripSig !== sigAlPedir || !result || !result.cars) return;
+      result.cars.forEach(function(c, i){
+        if (rutas[i] && rutas[i].live && rutas[i].directions){
+          c.route.directions = rutas[i].directions;
+          c.route.live = true;
+        }
+      });
+      render();
+    });
+  }
+  return true;
+}
+
 function tryLoadExistingTrip(shouldScroll){
+  if (restaurarViajeEnCurso(shouldScroll)) return true;
   var existing = poolHistory.filter(function(h){ return h.dateISO === matchDateISO && h.driverIds && h.driverIds.length; })[0];
   if (!existing) return false;
   var carsFromHistory = existing.driverIds.map(function(did, i){
@@ -786,17 +857,20 @@ function tryLoadExistingTrip(shouldScroll){
     result = { cars: carsFromHistory.map(function(c, i){ return Object.assign({}, c, { route: routes[i] }); }) };
     render();
     if (shouldScroll){
-      setTimeout(function(){
-        var mapEl = document.querySelector(".map-wrap");
-        if (mapEl) mapEl.scrollIntoView({ behavior: "smooth", block: "center" });
-      }, 50);
+      bajarAlMapa();
     }
   });
   return true;
 }
 
-function calcularSemana(){
-  if (tryLoadExistingTrip(true)) return;
+function volverADesignar(){
+  var viajeArrancado = Object.keys(enCamino || {}).some(function(k){ return enCamino[k] !== undefined; });
+  if (viajeArrancado && !confirm("El viaje ya arranco (alguien aviso En camino). Si volves a designar, se borran los avisos y los horarios cambian para todos. ¿Seguir?")) return;
+  calcularSemana(true);
+}
+
+function calcularSemana(forzar){
+  if (!forzar && tryLoadExistingTrip(true)) return;
 
   var conf = players.filter(function(p){ return confirmed[p.id]; });
   if (conf.length < 2){ result = { error: "Necesitas al menos 2 confirmados para armar el pool." }; render(); return; }
@@ -862,21 +936,47 @@ function calcularSemana(){
 
   Promise.all(carsBase.map(function(c){ return getRouteForCar(c.driver, c.passengers); })).then(function(routes){
     result = { cars: carsBase.map(function(c, i){ return Object.assign({}, c, { route: routes[i] }); }) };
+    var tripNuevo = {
+      dateISO: matchDateISO,
+      matchTime: matchTime,
+      creado: Date.now(),
+      cars: carsBase.map(function(c, i){
+        return {
+          driverId: c.driver.id,
+          passengerIds: c.passengers.map(function(p){ return p.id; }),
+          colectivo: !!c.colectivo,
+          route: serializarRuta(routes[i])
+        };
+      })
+    };
+    tripNuevo = JSON.parse(JSON.stringify(tripNuevo)); // Firestore no acepta valores undefined
+    loadedTripSig = tripSig(tripNuevo);
+    // Mostramos el viaje ya, sin esperar a que termine de guardarse en la base
+    enCamino = {};
+    arrived = {};
+    currentTrip = tripNuevo;
+    render();
+    bajarAlMapa();
     withFreshSync(function(){
       enCamino = {};
       arrived = {};
-      currentTrip = {
-        dateISO: matchDateISO,
-        cars: carsBase.map(function(c){
-          return { driverId: c.driver.id, passengerIds: c.passengers.map(function(p){ return p.id; }) };
-        })
-      };
+      currentTrip = tripNuevo;
     });
-    setTimeout(function(){
-      var mapEl = document.querySelector(".map-wrap");
-      if (mapEl) mapEl.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 50);
   });
+}
+
+/* Baja hasta el mapa apenas aparece en pantalla (puede tardar un instante
+   en dibujarse, por eso reintenta unos segundos en vez de rendirse). */
+function bajarAlMapa(){
+  var intentos = 0;
+  (function intentar(){
+    var mapEl = document.querySelector(".map-wrap");
+    if (mapEl){
+      mapEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (++intentos < 30) setTimeout(intentar, 100);
+  })();
 }
 
 function guardarSemana(){
@@ -1415,7 +1515,7 @@ function renderSemana(){
     html += carsToShow.map(carBlock).join("");
     if (!weekSaved){
       html += '<div style="display:flex;gap:8px;margin-top:14px;">';
-      html += '<button class="btn-secondary" style="flex:1;" onclick="calcularSemana()"><i class="ti ti-refresh"></i> Volver a designar</button>';
+      html += '<button class="btn-secondary" style="flex:1;" onclick="volverADesignar()"><i class="ti ti-refresh"></i> Volver a designar</button>';
       html += '<button class="btn-primary" onclick="guardarSemana()" style="flex:1;background:var(--bg-elevated-2);color:var(--text-primary);"><i class="ti ti-check"></i>Archivar viaje</button>';
       html += '</div>';
     } else {
@@ -1934,7 +2034,17 @@ function startApp(){
       } else {
         docRef.set({ players: defaultPlayers, poolHistory: importedHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino, arrived: arrived, pushTokens: pushTokens, currentTrip: currentTrip });
       }
-      if (activeTab === "semana" && !result) { tryLoadExistingTrip(false); }
+      var sigSnapshot = tripSig(currentTrip);
+      var viajeCambioEnLaBase = sigSnapshot !== lastSnapshotTripSig;
+      lastSnapshotTripSig = sigSnapshot;
+      if (activeTab === "semana"){
+        if (viajeCambioEnLaBase && sigSnapshot && sigSnapshot !== loadedTripSig){
+          // Otro celular designo o rehizo el viaje: mostramos el nuevo
+          restaurarViajeEnCurso(false);
+        } else if (!result){
+          tryLoadExistingTrip(false);
+        }
+      }
       render();
     }, function(err){
       console.error("Error conectando a Firestore:", err);
