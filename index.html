@@ -978,8 +978,9 @@ function volverADesignar(){
 }
 
 function calcularSemana(forzar){
-  // Si cambiaron los suplentes desde que se armo el viaje, hay que rearmarlo
-  if (!forzar && suplentesCambiaron()){ volverADesignar(); return; }
+  // Si cambio quien va (titulares, suplentes o un chofer sin auto) desde que
+  // se armo el viaje, no se recupera el viejo: se rearma
+  if (!forzar && viajeDesactualizado()){ volverADesignar(); return; }
   if (!forzar && tryLoadExistingTrip(true)) return;
 
   var conf = players.filter(function(p){ return confirmed[p.id]; });
@@ -1244,6 +1245,29 @@ function suplentesCambiaron(){
   var enViaje = [];
   currentTrip.cars.forEach(function(c){ (c.suplentes || []).forEach(function(s){ enViaje.push(s); }); });
   return firmaSuplentes(enViaje) !== firmaSuplentes(suplentesDeEstaSemana());
+}
+
+/* Compara quienes van en el viaje ya armado con los titulares confirmados ahora,
+   y revisa que ningun chofer designado haya quedado sin auto */
+function titularesCambiaron(){
+  if (!currentTrip || currentTrip.dateISO !== matchDateISO || !Array.isArray(currentTrip.cars)) return false;
+  var enViaje = [];
+  currentTrip.cars.forEach(function(c){
+    enViaje.push(c.driverId);
+    (c.passengerIds || []).forEach(function(id){ enViaje.push(id); });
+  });
+  var confirmadosAhora = players.filter(function(p){ return confirmed[p.id]; }).map(function(p){ return p.id; });
+  if (enViaje.sort().join(",") !== confirmadosAhora.sort().join(",")) return true;
+  return currentTrip.cars.some(function(c){ return !!sinAuto[c.driverId]; });
+}
+function semanaArchivada(){
+  return poolHistory.some(function(h){ return h.dateISO === matchDateISO && h.driverIds && h.driverIds.length; });
+}
+/* El viaje guardado ya no coincide con quienes van: hay que rearmarlo.
+   Una semana ya archivada no se toca. */
+function viajeDesactualizado(){
+  if (semanaArchivada()) return false;
+  return titularesCambiaron() || suplentesCambiaron();
 }
 
 function toggleMenuSuplentes(){ suplenteMenuOpen = !suplenteMenuOpen; render(); }
@@ -1834,8 +1858,8 @@ function renderSemana(){
     html += '<p style="font-size:13px;color:var(--text-secondary);margin-top:12px;">Calculando rutas con tránsito real...</p>';
   }
   if (result && result.cars){
-    if (!weekSaved && suplentesCambiaron()){
-      html += '<p style="font-size:13px;color:var(--warning);margin:14px 0 0;display:flex;align-items:center;gap:6px;"><i class="ti ti-alert-triangle"></i>Cambiaron los suplentes. Designá de nuevo para rearmar los autos.</p>';
+    if (!weekSaved && viajeDesactualizado()){
+      html += '<p style="font-size:13px;color:var(--warning);margin:14px 0 0;display:flex;align-items:center;gap:6px;"><i class="ti ti-alert-triangle"></i>Cambió quién va esta semana. Designá de nuevo para rearmar los autos.</p>';
     }
     var carsToShow = getMyCars(result.cars);
     var anyLive = carsToShow.some(function(c){ return c.route && c.route.live; });
