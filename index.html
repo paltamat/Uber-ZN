@@ -195,6 +195,35 @@
 
   .stat-icon { display: inline-flex; width: 26px; height: 26px; color: var(--text-secondary); flex-shrink: 0; }
   .stat-icon svg { width: 100%; height: 100%; display: block; }
+
+  /* ---------- Suplentes ---------- */
+  .sup-wrap { position: relative; margin: 0 0 4px; }
+  .sup-trigger { width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 12px 14px; font-size: 14px; }
+  .sup-trigger .ti { font-size: 16px; }
+  .sup-trigger .sup-chevron { font-size: 14px; opacity: 0.6; }
+  .sup-catcher { position: fixed; inset: 0; z-index: 40; }
+  .sup-menu {
+    position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 45;
+    background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: 0 14px 30px rgba(0,0,0,0.55); overflow: hidden;
+  }
+  .sup-list { max-height: 264px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .sup-item {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; background: none; border: none;
+    color: var(--text-primary); font-family: inherit; font-size: 15px; font-weight: 600; text-align: left;
+    padding: 12px 16px; cursor: pointer;
+  }
+  .sup-item:active { background: rgba(255,255,255,0.06); }
+  .sup-add { width: 100%; color: var(--accent); padding: 14px 16px; }
+  .sup-add .ti { font-size: 18px; }
+  .sup-row { display: flex; align-items: stretch; border-top: 1px solid var(--border); }
+  .sup-text { display: flex; flex-direction: column; min-width: 0; }
+  .sup-name, .sup-addr { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sup-addr { font-size: 12px; font-weight: 400; color: var(--text-secondary); margin-top: 2px; }
+  .sup-check { margin-left: auto; color: var(--success); font-size: 18px; flex-shrink: 0; }
+  .sup-icon-btn { background: none; border: none; color: var(--text-secondary); padding: 0 12px; cursor: pointer; display: flex; align-items: center; font-size: 18px; }
+  .sup-icon-btn.danger { color: var(--danger); padding-right: 16px; }
+  .sup-empty { margin: 0; padding: 12px 16px 14px; font-size: 13px; color: var(--text-tertiary); border-top: 1px solid var(--border); }
 </style>
 </head>
 <body>
@@ -485,6 +514,17 @@ function desactivarNotificaciones(){
 
 var STORAGE_KEY = "pool_jueves_state_v2";
 
+/* Todo lo que se guarda en la base compartida, en un solo lugar. Cada escritura
+   reemplaza el documento entero, asi que si un campo falta aca se borra. */
+function estadoCompartido(){
+  return {
+    players: players, poolHistory: poolHistory, venue: venue,
+    confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino,
+    arrived: arrived, pushTokens: pushTokens, currentTrip: currentTrip,
+    suplentes: suplentes, suplentesViaje: suplentesViaje
+  };
+}
+
 function loadState(){
   try {
     var raw = localStorage.getItem(STORAGE_KEY);
@@ -494,13 +534,13 @@ function loadState(){
 }
 function saveState(){
   if (FIREBASE_ENABLED) {
-    docRef.set({ players: players, poolHistory: poolHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino, arrived: arrived, pushTokens: pushTokens, currentTrip: currentTrip }).catch(function(e){
+    docRef.set(estadoCompartido()).catch(function(e){
       console.error("Error guardando en Firestore:", e);
     });
     return;
   }
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ players: players, poolHistory: poolHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino, arrived: arrived, pushTokens: pushTokens, currentTrip: currentTrip }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(estadoCompartido()));
   } catch (e) { /* almacenamiento no disponible */ }
 }
 
@@ -526,14 +566,12 @@ function withFreshSync(mutateFn){
           if (data.arrived) arrived = data.arrived;
           if (data.pushTokens) pushTokens = data.pushTokens;
           if (data.currentTrip !== undefined) currentTrip = data.currentTrip;
+          if (data.suplentes) suplentes = data.suplentes;
+          if (data.suplentesViaje !== undefined) suplentesViaje = data.suplentesViaje;
           players.forEach(function(p){ if (!(p.id in confirmed)) confirmed[p.id] = true; });
         }
         mutateFn();
-        transaction.set(docRef, {
-          players: players, poolHistory: poolHistory, venue: venue,
-          confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino,
-          arrived: arrived, pushTokens: pushTokens, currentTrip: currentTrip
-        });
+        transaction.set(docRef, estadoCompartido());
       });
     }).then(function(){
       render();
@@ -575,6 +613,19 @@ var enCamino = (saved && saved.enCamino) ? saved.enCamino : {};
 var arrived = (saved && saved.arrived) ? saved.arrived : {};
 var pushTokens = (saved && saved.pushTokens) ? saved.pushTokens : [];
 var currentTrip = (saved && saved.currentTrip) ? saved.currentTrip : null;
+
+/* Suplentes: la lista guardada (nombre y direccion) y quienes se suman al
+   viaje de un jueves puntual. Esto ultimo queda atado a la fecha, asi que
+   vence solo cuando la app pasa al jueves siguiente. */
+var suplentes = (saved && saved.suplentes) ? saved.suplentes : [];
+var suplentesViaje = (saved && saved.suplentesViaje) ? saved.suplentesViaje : null;
+var suplenteMenuOpen = false;
+var editingSuplente = null; // null | "nuevo" | id del suplente
+var suplenteDraft = { name: "", address: "" };
+var suplenteError = "";
+var guardandoSuplente = false;
+var suplenteSaveToken = 0;
+var suplentesGeoIntentados = {};
 var carColors = ["#0A84FF", "#FF9F0A"];
 var editingProfileId = null;
 var viewingRatingsId = null;
@@ -622,6 +673,7 @@ function onGoogleMapsLoaded(){
   GOOGLE_MAPS_READY = true;
   if (activeTab === "semana" && result && result.cars) render();
   setTimeout(geocodificarPendientes, 1500);
+  setTimeout(geocodificarSuplentesPendientes, 2500);
 }
 
 /* Las coordenadas iniciales eran aproximadas. Esto las reemplaza por las
@@ -659,6 +711,52 @@ function geocodificarPendientes(){
   });
 }
 
+function tieneCoords(p){
+  return !!p && typeof p.lat === "number" && typeof p.lng === "number" && isFinite(p.lat) && isFinite(p.lng);
+}
+
+function geocodificarDireccion(address, cb){
+  if (!GOOGLE_MAPS_READY || !window.google || !google.maps.Geocoder){ cb(null); return; }
+  try {
+    new google.maps.Geocoder().geocode({ address: address + ", Buenos Aires, Argentina" }, function(res, status){
+      if (status === "OK" && res && res[0]){
+        var loc = res[0].geometry.location;
+        cb({ lat: loc.lat(), lng: loc.lng() });
+      } else {
+        console.warn("No se pudo geocodificar:", address, status);
+        cb(null);
+      }
+    });
+  } catch (e){ cb(null); }
+}
+
+/* Completa las coordenadas de los suplentes que se guardaron sin ellas
+   (por ejemplo, si el mapa todavia no habia cargado). Una vez por sesion. */
+function geocodificarSuplentesPendientes(){
+  if (!GOOGLE_MAPS_READY) return;
+  var pendientes = (suplentes || []).filter(function(s){
+    return s.address && s.geoAddress !== s.address && !suplentesGeoIntentados[s.id + "@" + s.address];
+  });
+  if (!pendientes.length) return;
+  var resultados = [];
+  var quedan = pendientes.length;
+  pendientes.forEach(function(s){
+    suplentesGeoIntentados[s.id + "@" + s.address] = true;
+    geocodificarDireccion(s.address, function(coords){
+      if (coords) resultados.push({ id: s.id, address: s.address, lat: coords.lat, lng: coords.lng });
+      quedan--;
+      if (quedan === 0 && resultados.length){
+        withFreshSync(function(){
+          suplentes = (suplentes || []).map(function(x){
+            var r = resultados.filter(function(y){ return y.id === x.id; })[0];
+            return (r && r.address === x.address) ? Object.assign({}, x, { lat: r.lat, lng: r.lng, geoAddress: r.address }) : x;
+          });
+        });
+      }
+    });
+  });
+}
+
 function computeRouteFallback(driver, passengers){
   var speed=28, stopMin=2;
   var current = { lat: driver.lat, lng: driver.lng };
@@ -667,12 +765,12 @@ function computeRouteFallback(driver, passengers){
   var legs = [];
   while (remaining.length){
     var nearestIdx=0, nearestDist=Infinity;
-    remaining.forEach(function(p,idx){ var d=distKm(current,p); if(d<nearestDist){nearestDist=d;nearestIdx=idx;} });
+    remaining.forEach(function(p,idx){ var d = tieneCoords(p) ? distKm(current,p) : 0; if(d<nearestDist){nearestDist=d;nearestIdx=idx;} });
     var next = remaining[nearestIdx];
     relative += nearestDist/speed*60;
-    legs.push({ name: next.name, address: next.address, arrivalRelative: relative, lat:next.lat, lng:next.lng });
+    legs.push({ id: next.id, name: next.name, address: next.address, arrivalRelative: relative, lat:next.lat, lng:next.lng });
     relative += stopMin;
-    current = { lat: next.lat, lng: next.lng };
+    if (tieneCoords(next)) current = { lat: next.lat, lng: next.lng };
     remaining.splice(nearestIdx,1);
   }
   var toVenue = distKm(current, venue)/speed*60;
@@ -691,7 +789,10 @@ function getRouteForCar(driver, passengers){
     }
     try {
       var service = new google.maps.DirectionsService();
-      var waypoints = passengers.map(function(p){ return { location: p.address, stopover: true }; });
+      var waypoints = passengers.map(function(p){
+        var lugar = (p.esSuplente && tieneCoords(p)) ? { lat: p.lat, lng: p.lng } : p.address;
+        return { location: lugar, stopover: true };
+      });
       var departureGuess = new Date(matchDateISO + "T" + matchTime + ":00");
       service.route({
         origin: driver.address,
@@ -716,7 +817,7 @@ function getRouteForCar(driver, passengers){
             relative += durSec / 60;
             var isLast = i === route0.legs.length - 1;
             var stop = isLast ? venue : orderedPassengers[i];
-            legs.push({ name: stop.name, address: stop.address, arrivalRelative: relative, lat: stop.lat, lng: stop.lng });
+            legs.push({ id: stop.id, name: stop.name, address: stop.address, arrivalRelative: relative, lat: stop.lat, lng: stop.lng });
           });
           var matchMin = parseTime(matchTime);
           var plannedDepartureMin = matchMin - relative;
@@ -748,7 +849,9 @@ function armarUnidades(remaining){
 }
 
 function distUnidadA(u, driver){
-  return u.reduce(function(s, p){ return s + distKm(p, driver); }, 0) / u.length;
+  var conCoords = u.filter(tieneCoords);
+  if (!conCoords.length || !tieneCoords(driver)) return 0;
+  return conCoords.reduce(function(s, p){ return s + distKm(p, driver); }, 0) / conCoords.length;
 }
 
 function ratioRedondeado(p){ return Math.round(ratioDe(p) * 1000) / 1000; }
@@ -778,7 +881,7 @@ function serializarRuta(route){
     plannedDepartureMin: route.plannedDepartureMin,
     live: !!route.live,
     legs: (route.legs || []).map(function(l){
-      return { name: l.name, address: l.address || "", arrivalRelative: l.arrivalRelative, lat: l.lat, lng: l.lng };
+      return { id: l.id || null, name: l.name, address: l.address || "", arrivalRelative: l.arrivalRelative, lat: l.lat, lng: l.lng };
     })
   };
 }
@@ -786,7 +889,10 @@ function serializarRuta(route){
 function tripSig(trip){
   if (!trip) return "";
   return (trip.dateISO || "") + "#" + (trip.creado || "") + "#" +
-    (trip.cars || []).map(function(c){ return c.driverId + ":" + (c.passengerIds || []).join(","); }).join("|");
+    (trip.cars || []).map(function(c){
+      var ids = (c.passengerIds || []).concat((c.suplentes || []).map(function(s){ return s.id; }));
+      return c.driverId + ":" + ids.join(",");
+    }).join("|");
 }
 
 function restaurarViajeEnCurso(shouldScroll){
@@ -796,7 +902,9 @@ function restaurarViajeEnCurso(shouldScroll){
     if (!driver || !c.route || !c.route.legs) return null;
     var passengers = (c.passengerIds || []).map(function(id){
       return players.filter(function(p){ return p.id === id; })[0];
-    }).filter(Boolean);
+    }).filter(Boolean).concat((c.suplentes || []).map(function(s){
+      return Object.assign({}, s, { esSuplente: true });
+    }));
     return {
       driver: driver,
       passengers: passengers,
@@ -870,10 +978,13 @@ function volverADesignar(){
 }
 
 function calcularSemana(forzar){
+  // Si cambiaron los suplentes desde que se armo el viaje, hay que rearmarlo
+  if (!forzar && suplentesCambiaron()){ volverADesignar(); return; }
   if (!forzar && tryLoadExistingTrip(true)) return;
 
   var conf = players.filter(function(p){ return confirmed[p.id]; });
-  if (conf.length < 2){ result = { error: "Necesitas al menos 2 confirmados para armar el pool." }; render(); return; }
+  var invitados = suplentesDeEstaSemana();
+  if (conf.length + invitados.length < 2){ result = { error: "Necesitas al menos 2 confirmados para armar el pool." }; render(); return; }
   var driverPool = conf.filter(function(p){ return !sinAuto[p.id]; });
   if (driverPool.length === 0){ result = { error: "Nadie tiene auto disponible esta semana." }; render(); return; }
   var ordenados = driverPool.slice().sort(function(a,b){
@@ -886,15 +997,15 @@ function calcularSemana(forzar){
     if (lastA > lastB) return 1;
     return 0;
   });
-  var quiereDosAutos = carsOverride === "2" ? true : (carsOverride === "1" ? false : conf.length === 6);
+  var quiereDosAutos = carsOverride === "2" ? true : (carsOverride === "1" ? false : (conf.length + invitados.length) >= 6);
   var dosAutos = quiereDosAutos && ordenados.length >= 2;
   var drivers = dosAutos ? [ordenados[0], ordenados[1]] : [ordenados[0]];
   var cars;
   if (!dosAutos){
-    cars = [{ driver: drivers[0], passengers: conf.filter(function(p){ return p.id !== drivers[0].id; }) }];
+    cars = [{ driver: drivers[0], passengers: conf.filter(function(p){ return p.id !== drivers[0].id; }).concat(invitados) }];
   } else {
     var driverIds = drivers.map(function(d){ return d.id; });
-    var remaining = conf.filter(function(p){ return driverIds.indexOf(p.id) === -1; });
+    var remaining = conf.filter(function(p){ return driverIds.indexOf(p.id) === -1; }).concat(invitados);
     var c0 = { driver: drivers[0], passengers: [] };
     var c1 = { driver: drivers[1], passengers: [] };
 
@@ -928,7 +1039,7 @@ function calcularSemana(forzar){
     }
     cars = [c0, c1];
   }
-  var carsBase = cars.map(function(c){ return Object.assign({}, c, { colectivo: c.passengers.length === 4 }); });
+  var carsBase = cars.map(function(c){ return Object.assign({}, c, { colectivo: soloTitulares(c.passengers).length === 4 }); });
   result = { loading: true };
   ratingsInput = {};
   weekSaved = false;
@@ -943,7 +1054,10 @@ function calcularSemana(forzar){
       cars: carsBase.map(function(c, i){
         return {
           driverId: c.driver.id,
-          passengerIds: c.passengers.map(function(p){ return p.id; }),
+          passengerIds: soloTitulares(c.passengers).map(function(p){ return p.id; }),
+          suplentes: c.passengers.filter(function(p){ return p.esSuplente; }).map(function(p){
+            return { id: p.id, name: p.name, address: p.address || "", lat: tieneCoords(p) ? p.lat : null, lng: tieneCoords(p) ? p.lng : null };
+          }),
           colectivo: !!c.colectivo,
           route: serializarRuta(routes[i])
         };
@@ -989,7 +1103,10 @@ function guardarSemana(){
     driverIds: result.cars.map(function(c){return c.driver.id;}),
     passengers: {}
   };
-  result.cars.forEach(function(c){ histEntry.passengers[c.driver.name] = c.passengers.map(function(p){return p.name;}); });
+  result.cars.forEach(function(c){ histEntry.passengers[c.driver.name] = soloTitulares(c.passengers).map(function(p){return p.name;}); });
+  var nombresSuplentes = [];
+  result.cars.forEach(function(c){ c.passengers.forEach(function(p){ if (p.esSuplente) nombresSuplentes.push(p.name); }); });
+  if (nombresSuplentes.length) histEntry.suplentes = nombresSuplentes;
   var carsSnapshot = result.cars;
 
   withFreshSync(function(){
@@ -1079,15 +1196,13 @@ function submitRating(driverId, n){
           var data = doc.data();
           if (data.players) players = data.players;
           if (data.poolHistory) poolHistory = data.poolHistory;
+          if (data.suplentes) suplentes = data.suplentes;
+          if (data.suplentesViaje !== undefined) suplentesViaje = data.suplentesViaje;
         }
         var entry = findLastThursdayEntry();
         if (entry && hasRatedDriver(entry, driverId)) return;
         applyLocally();
-        transaction.set(docRef, {
-          players: players, poolHistory: poolHistory, venue: venue,
-          confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino,
-          arrived: arrived, pushTokens: pushTokens, currentTrip: currentTrip
-        });
+        transaction.set(docRef, estadoCompartido());
       });
     }).then(function(){
       render();
@@ -1102,6 +1217,137 @@ function submitRating(driverId, n){
     saveState();
     render();
   }
+}
+
+/* ---------- Suplentes ---------- */
+function escHtml(s){
+  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function soloTitulares(lista){ return (lista || []).filter(function(p){ return !p.esSuplente; }); }
+
+function idsSuplentesSemana(){
+  if (!suplentesViaje || suplentesViaje.dateISO !== matchDateISO || !Array.isArray(suplentesViaje.ids)) return [];
+  return suplentesViaje.ids.filter(function(id){ return (suplentes || []).some(function(s){ return s.id === id; }); });
+}
+function suplentesDeEstaSemana(){
+  return idsSuplentesSemana().map(function(id){
+    var s = suplentes.filter(function(x){ return x.id === id; })[0];
+    return Object.assign({}, s, { esSuplente: true });
+  });
+}
+function firmaSuplentes(lista){
+  return lista.map(function(s){ return s.id + "@" + (s.address || ""); }).sort().join("|");
+}
+/* Compara los suplentes del viaje ya armado con los anotados para esta semana */
+function suplentesCambiaron(){
+  if (!currentTrip || currentTrip.dateISO !== matchDateISO || !Array.isArray(currentTrip.cars)) return false;
+  var enViaje = [];
+  currentTrip.cars.forEach(function(c){ (c.suplentes || []).forEach(function(s){ enViaje.push(s); }); });
+  return firmaSuplentes(enViaje) !== firmaSuplentes(suplentesDeEstaSemana());
+}
+
+function toggleMenuSuplentes(){ suplenteMenuOpen = !suplenteMenuOpen; render(); }
+function cerrarMenuSuplentes(){ suplenteMenuOpen = false; render(); }
+
+function abrirNuevoSuplente(){
+  suplenteMenuOpen = false;
+  editingSuplente = "nuevo";
+  suplenteDraft = { name: "", address: "" };
+  suplenteError = "";
+  render();
+}
+function abrirEditarSuplente(id){
+  var s = (suplentes || []).filter(function(x){ return x.id === id; })[0];
+  if (!s) return;
+  suplenteMenuOpen = false;
+  editingSuplente = id;
+  suplenteDraft = { name: s.name, address: s.address };
+  suplenteError = "";
+  render();
+}
+function cerrarModalSuplente(){
+  suplenteSaveToken++; // si habia un guardado en curso, se descarta
+  guardandoSuplente = false;
+  editingSuplente = null;
+  suplenteError = "";
+  suplenteMenuOpen = true; // vuelve al menu de donde vino
+  render();
+}
+
+function guardarSuplente(){
+  if (guardandoSuplente) return;
+  var name = (suplenteDraft.name || "").trim();
+  var address = (suplenteDraft.address || "").trim();
+  if (!name || !address){ suplenteError = "Completá nombre y dirección."; render(); return; }
+  var editId = editingSuplente === "nuevo" ? null : editingSuplente;
+  var previo = editId ? (suplentes || []).filter(function(x){ return x.id === editId; })[0] : null;
+  var mismaDireccion = !!previo && previo.address === address;
+  var miToken = ++suplenteSaveToken;
+  guardandoSuplente = true;
+  suplenteError = "";
+  render();
+
+  function terminar(coords){
+    if (miToken !== suplenteSaveToken) return;
+    guardandoSuplente = false;
+    editingSuplente = null;
+    suplenteMenuOpen = true; // queda a la vista en la lista
+    withFreshSync(function(){
+      if (editId){
+        suplentes = (suplentes || []).map(function(s){
+          if (s.id !== editId) return s;
+          var nuevo = Object.assign({}, s, { name: name, address: address });
+          if (!mismaDireccion){
+            nuevo.lat = coords ? coords.lat : null;
+            nuevo.lng = coords ? coords.lng : null;
+            nuevo.geoAddress = coords ? address : null;
+          }
+          return nuevo;
+        });
+      } else {
+        suplentes = (suplentes || []).concat([{
+          id: "sup_" + Date.now(), name: name, address: address,
+          lat: coords ? coords.lat : null, lng: coords ? coords.lng : null, geoAddress: coords ? address : null
+        }]);
+      }
+    });
+    showToast(editId ? "Suplente actualizado" : "Suplente guardado");
+  }
+
+  if (mismaDireccion) terminar(null);
+  else geocodificarDireccion(address, terminar);
+}
+
+function eliminarSuplente(id){
+  var s = (suplentes || []).filter(function(x){ return x.id === id; })[0];
+  if (!s) return;
+  if (!confirm("¿Borrar a " + s.name + " de la lista de suplentes?")) return;
+  withFreshSync(function(){
+    suplentes = (suplentes || []).filter(function(x){ return x.id !== id; });
+    if (suplentesViaje && Array.isArray(suplentesViaje.ids)){
+      suplentesViaje = { dateISO: suplentesViaje.dateISO, ids: suplentesViaje.ids.filter(function(x){ return x !== id; }) };
+    }
+  });
+}
+
+function agregarSuplenteAlViaje(id){
+  var s = (suplentes || []).filter(function(x){ return x.id === id; })[0];
+  if (!s) return;
+  if (idsSuplentesSemana().indexOf(id) !== -1){ showToast(s.name + " ya está en el pool"); return; }
+  suplenteMenuOpen = false;
+  withFreshSync(function(){
+    var base = (suplentesViaje && suplentesViaje.dateISO === matchDateISO && Array.isArray(suplentesViaje.ids)) ? suplentesViaje.ids : [];
+    if (base.indexOf(id) === -1) base = base.concat([id]);
+    suplentesViaje = { dateISO: matchDateISO, ids: base };
+  });
+  showToast(s.name + " se suma al pool");
+}
+
+function quitarSuplenteDelViaje(id){
+  withFreshSync(function(){
+    if (!suplentesViaje || suplentesViaje.dateISO !== matchDateISO || !Array.isArray(suplentesViaje.ids)) return;
+    suplentesViaje = { dateISO: matchDateISO, ids: suplentesViaje.ids.filter(function(x){ return x !== id; }) };
+  });
 }
 
 function toggleConfirm(id){ withFreshSync(function(){ confirmed[id] = !confirmed[id]; result = null; weekSaved = false; }); }
@@ -1120,6 +1366,7 @@ function refrescarFechaAutomatica(){
 
 function setTab(t){
   activeTab = t;
+  suplenteMenuOpen = false;
   if (t === "semana"){
     refrescarFechaAutomatica();
     if (!result) tryLoadExistingTrip(false);
@@ -1236,7 +1483,7 @@ function updateVenue(field, value){
   showToast("Guardado");
 }
 function exportBackup(){
-  var data = JSON.stringify({ players: players, poolHistory: poolHistory, venue: venue }, null, 2);
+  var data = JSON.stringify({ players: players, poolHistory: poolHistory, venue: venue, suplentes: suplentes }, null, 2);
   var blob = new Blob([data], { type: "application/json" });
   var url = URL.createObjectURL(blob);
   var a = document.createElement("a");
@@ -1257,6 +1504,7 @@ function importBackup(input){
       if (data.players) players = data.players;
       if (data.poolHistory) poolHistory = data.poolHistory;
       if (data.venue) venue = Object.assign(venue, data.venue);
+      if (data.suplentes) suplentes = data.suplentes;
       players.forEach(function(p){ if (!(p.id in confirmed)) confirmed[p.id] = true; });
       saveState();
       render();
@@ -1341,6 +1589,19 @@ function playerCardMini(p){
   '</div>';
 }
 
+function buscarPasajeroDeParada(c, l){
+  if (l.id){
+    var porId = c.passengers.filter(function(p){ return p.id === l.id; })[0];
+    if (porId) return porId;
+  }
+  var mismos = c.passengers.filter(function(p){ return p.name === l.name; });
+  if (mismos.length > 1 && l.address){
+    var porDir = mismos.filter(function(p){ return p.address === l.address; })[0];
+    if (porDir) return porDir;
+  }
+  return mismos[0];
+}
+
 function routeBlock(c, color){
   var route = c.route;
   var real = enCamino[c.driver.id];
@@ -1351,8 +1612,10 @@ function routeBlock(c, color){
     var arrival = formatTime(base + l.arrivalRelative);
     var arriveBtn = "";
     if (!isVenue){
-      var passenger = c.passengers.filter(function(p){ return p.name === l.name; })[0];
-      if (passenger){
+      var passenger = buscarPasajeroDeParada(c, l);
+      if (passenger && passenger.esSuplente){
+        arriveBtn = '<span class="pill pill-gray" style="margin-left:auto;">suplente</span>';
+      } else if (passenger){
         var isArrived = !!arrived[passenger.id];
         var btnColor = isArrived ? "var(--success)" : "var(--text-tertiary)";
         var disabledStyle = canMark ? "cursor:pointer;" : "cursor:not-allowed;opacity:0.35;pointer-events:none;";
@@ -1362,7 +1625,7 @@ function routeBlock(c, color){
     return '<div class="route-stop">' +
       '<span class="route-time" style="color:' + color + ';">' + arrival + '</span>' +
       '<i class="ti ti-' + (isVenue ? "flag-3" : "map-pin") + '" style="font-size:20px;"></i>' +
-      '<span style="font-size:16px;font-weight:600;color:var(--text-primary);">' + l.name + '</span>' +
+      '<span style="font-size:16px;font-weight:600;color:var(--text-primary);">' + escHtml(l.name) + '</span>' +
       arriveBtn +
     '</div>';
   }).join("");
@@ -1384,14 +1647,14 @@ function carBlock(c, i){
       '<p class="car-title">Auto ' + (i+1) + ': ' + c.driver.name + '</p>' +
       '<div style="margin-left:auto;display:flex;gap:6px;align-items:center;">' + badge + estado + '</div>' +
     '</div>' +
-    '<p style="font-size:13px;color:var(--text-secondary);margin:6px 0 0;"><i class="ti ti-users"></i> ' + (c.passengers.length ? c.passengers.map(function(p){return p.name;}).join(", ") : "sin pasajeros") + '</p>' +
+    '<p style="font-size:13px;color:var(--text-secondary);margin:6px 0 0;"><i class="ti ti-users"></i> ' + (c.passengers.length ? c.passengers.map(function(p){ return p.esSuplente ? escHtml(p.name) + ' <span style="color:var(--text-tertiary);">(suplente)</span>' : p.name; }).join(", ") : "sin pasajeros") + '</p>' +
     routeBlock(c, color) +
   '</div>';
 }
 
 function mapSvg(cars){
   var points = [{lat:venue.lat,lng:venue.lng}];
-  cars.forEach(function(c){ points.push({lat:c.driver.lat,lng:c.driver.lng}); c.passengers.forEach(function(p){ points.push({lat:p.lat,lng:p.lng}); }); });
+  cars.forEach(function(c){ points.push({lat:c.driver.lat,lng:c.driver.lng}); c.passengers.forEach(function(p){ if (tieneCoords(p)) points.push({lat:p.lat,lng:p.lng}); }); });
   var lats = points.map(function(p){return p.lat;}), lngs = points.map(function(p){return p.lng;});
   var minLat=Math.min.apply(null,lats), maxLat=Math.max.apply(null,lats);
   var minLng=Math.min.apply(null,lngs), maxLng=Math.max.apply(null,lngs);
@@ -1402,7 +1665,7 @@ function mapSvg(cars){
   var svg = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block;background:#0d0d0f;">';
   cars.forEach(function(c,ci){
     var color = carColors[ci % carColors.length];
-    var order = [{lat:c.driver.lat,lng:c.driver.lng}].concat(c.route.legs.map(function(l){return {lat:l.lat,lng:l.lng};}));
+    var order = [{lat:c.driver.lat,lng:c.driver.lng}].concat(c.route.legs.filter(tieneCoords).map(function(l){return {lat:l.lat,lng:l.lng};}));
     var d = "";
     order.forEach(function(pt,idx){ var xy2=xy(pt); d += (idx===0?"M":"L") + xy2[0] + " " + xy2[1] + " "; });
     svg += '<path d="'+d+'" fill="none" stroke="'+color+'" stroke-width="2" stroke-dasharray="5,4" opacity="0.85" />';
@@ -1416,9 +1679,10 @@ function mapSvg(cars){
     svg += '<circle cx="'+dxy[0]+'" cy="'+dxy[1]+'" r="8" fill="'+color+'" />';
     svg += '<text x="'+(dxy[0]+11)+'" y="'+(dxy[1]+4)+'" font-size="11" fill="#ffffff">'+c.driver.name+'</text>';
     c.passengers.forEach(function(p){
+      if (!tieneCoords(p)) return;
       var pxy = xy(p);
       svg += '<circle cx="'+pxy[0]+'" cy="'+pxy[1]+'" r="6" fill="'+color+'" fill-opacity="0.55" />';
-      svg += '<text x="'+(pxy[0]+9)+'" y="'+(pxy[1]+4)+'" font-size="11" fill="#98989d">'+p.name+'</text>';
+      svg += '<text x="'+(pxy[0]+9)+'" y="'+(pxy[1]+4)+'" font-size="11" fill="#98989d">'+escHtml(p.name)+'</text>';
     });
   });
   svg += '</svg>';
@@ -1476,6 +1740,69 @@ function calificarCard(entry){
   return '<div class="card"><p style="margin:0;font-size:15px;font-weight:700;">Calificar</p>' + rows + '</div>';
 }
 
+function suplenteCardMini(s){
+  return '<div class="card row">' +
+    '<div class="row-start">' +
+      '<div class="avatar" style="background:var(--bg-elevated-2);color:var(--text-secondary);">' + escHtml(s.name.slice(0,2).toUpperCase()) + '</div>' +
+      '<div><p class="name">' + escHtml(s.name) + '</p><p class="subtext" style="cursor:default;">Suplente</p></div>' +
+    '</div>' +
+    '<button onclick="quitarSuplenteDelViaje(\'' + s.id + '\')" aria-label="Quitar a ' + escHtml(s.name) + ' del pool" style="border:none;background:none;padding:4px;cursor:pointer;color:var(--text-tertiary);display:flex;align-items:center;"><i class="ti ti-x" style="font-size:22px;"></i></button>' +
+  '</div>';
+}
+
+function menuSuplentes(){
+  var enPool = idsSuplentesSemana();
+  var html = '<div class="sup-wrap">';
+  html += '<button class="btn-secondary sup-trigger" onclick="toggleMenuSuplentes()" aria-expanded="' + (suplenteMenuOpen ? "true" : "false") + '">' +
+    '<i class="ti ti-plus"></i>Suplente<i class="ti ti-chevron-' + (suplenteMenuOpen ? "up" : "down") + ' sup-chevron"></i>' +
+  '</button>';
+  if (suplenteMenuOpen){
+    html += '<div class="sup-catcher" onclick="cerrarMenuSuplentes()"></div>';
+    html += '<div class="sup-menu">';
+    html += '<button class="sup-item sup-add" onclick="abrirNuevoSuplente()"><i class="ti ti-plus"></i>Agregar suplente</button>';
+    var lista = (suplentes || []).slice().sort(function(a, b){ return a.name.localeCompare(b.name, "es"); });
+    if (lista.length){
+      html += '<div class="sup-list">';
+      lista.forEach(function(s){
+        var yaEsta = enPool.indexOf(s.id) !== -1;
+        html += '<div class="sup-row">' +
+          '<button class="sup-item" onclick="agregarSuplenteAlViaje(\'' + s.id + '\')">' +
+            '<span class="sup-text"><span class="sup-name">' + escHtml(s.name) + '</span><span class="sup-addr">' + escHtml(s.address) + '</span></span>' +
+            (yaEsta ? '<i class="ti ti-check sup-check" aria-label="Ya está en el pool"></i>' : '') +
+          '</button>' +
+          '<button class="sup-icon-btn" onclick="abrirEditarSuplente(\'' + s.id + '\')" aria-label="Editar a ' + escHtml(s.name) + '"><i class="ti ti-pencil"></i></button>' +
+          '<button class="sup-icon-btn danger" onclick="eliminarSuplente(\'' + s.id + '\')" aria-label="Borrar a ' + escHtml(s.name) + '"><i class="ti ti-trash"></i></button>' +
+        '</div>';
+      });
+      html += '</div>';
+    } else {
+      html += '<p class="sup-empty">Todavía no hay suplentes guardados.</p>';
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function suplenteModal(){
+  if (!editingSuplente) return "";
+  var esNuevo = editingSuplente === "nuevo";
+  return '<div class="modal-backdrop" onclick="cerrarModalSuplente()">' +
+    '<div class="modal-sheet" onclick="event.stopPropagation()">' +
+      '<p style="margin:0 0 16px;font-size:16px;font-weight:700;">' + (esNuevo ? "Agregar suplente" : "Editar suplente") + '</p>' +
+      '<label class="field-label">Nombre</label>' +
+      '<input type="text" id="sup-name" value="' + escHtml(suplenteDraft.name) + '" oninput="suplenteDraft.name=this.value" autocomplete="off" />' +
+      '<label class="field-label">Dirección</label>' +
+      '<input type="text" id="sup-address" value="' + escHtml(suplenteDraft.address) + '" oninput="suplenteDraft.address=this.value" placeholder="Calle y número, localidad" autocomplete="off" />' +
+      (suplenteError ? '<p style="margin:10px 0 0;font-size:12px;color:var(--danger);">' + suplenteError + '</p>' : '') +
+      '<div style="display:flex;gap:8px;margin-top:18px;">' +
+        '<button class="btn-secondary" style="flex:1;" onclick="cerrarModalSuplente()">Cancelar</button>' +
+        '<button class="btn-primary" style="flex:1;' + (guardandoSuplente ? "opacity:0.6;" : "") + '" onclick="guardarSuplente()">' + (guardandoSuplente ? "Guardando…" : "Guardar") + '</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
 function renderSemana(){
   var html = "";
   var calEntry = getCalificarEntry();
@@ -1496,6 +1823,8 @@ function renderSemana(){
   html += '</div>';
 
   html += players.map(playerCardMini).join("");
+  html += suplentesDeEstaSemana().map(suplenteCardMini).join("");
+  html += menuSuplentes();
   html += '<button class="btn-primary" onclick="calcularSemana()" style="margin-top:6px;"><i class="ti ti-refresh"></i>Designar choferes</button>';
 
   if (result && result.error){
@@ -1505,6 +1834,9 @@ function renderSemana(){
     html += '<p style="font-size:13px;color:var(--text-secondary);margin-top:12px;">Calculando rutas con tránsito real...</p>';
   }
   if (result && result.cars){
+    if (!weekSaved && suplentesCambiaron()){
+      html += '<p style="font-size:13px;color:var(--warning);margin:14px 0 0;display:flex;align-items:center;gap:6px;"><i class="ti ti-alert-triangle"></i>Cambiaron los suplentes. Designá de nuevo para rearmar los autos.</p>';
+    }
     var carsToShow = getMyCars(result.cars);
     var anyLive = carsToShow.some(function(c){ return c.route && c.route.live; });
     if (GOOGLE_MAPS_READY && anyLive){
@@ -1706,7 +2038,10 @@ function historyItem(h){
   if (h.passengers) {
     Object.keys(h.passengers).forEach(function(k){ allPassengers = allPassengers.concat(h.passengers[k]); });
   }
-  var passengerNames = allPassengers.join(", ") || "-";
+  var suplentesH = Array.isArray(h.suplentes) ? h.suplentes : [];
+  var passengerNames = [allPassengers.join(", ")].concat(suplentesH.map(function(n){
+    return escHtml(n) + ' <span style="color:var(--text-tertiary);">(suplente)</span>';
+  })).filter(Boolean).join(", ") || "-";
   var hasColectivo = h.passengers && Object.keys(h.passengers).some(function(k){ return h.passengers[k].length === 4; });
   var busTag = hasColectivo ? '<span style="margin-left:auto;flex-shrink:0;align-self:center;color:var(--accent);"><span style="display:inline-flex;width:22px;height:22px;">' + ICON_BUS + '</span></span>' : "";
   return '<div class="card" style="display:flex;gap:16px;align-items:flex-start;cursor:pointer;" onclick="openEditHistory(\'' + h.dateISO + '\')">' +
@@ -1945,6 +2280,7 @@ function render(){
   html += editModal();
   html += ratingsModal();
   html += editHistoryModal();
+  html += suplenteModal();
   app.innerHTML = html;
   if (activeTab === "semana" && result && result.cars) mountLiveMap(getMyCars(result.cars));
 }
@@ -2030,9 +2366,11 @@ function startApp(){
         if (data.arrived) arrived = data.arrived;
         if (data.pushTokens) pushTokens = data.pushTokens;
         if (data.currentTrip !== undefined) currentTrip = data.currentTrip;
+        if (data.suplentes) suplentes = data.suplentes;
+        if (data.suplentesViaje !== undefined) suplentesViaje = data.suplentesViaje;
         players.forEach(function(p){ if (!(p.id in confirmed)) confirmed[p.id] = true; });
       } else {
-        docRef.set({ players: defaultPlayers, poolHistory: importedHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino, arrived: arrived, pushTokens: pushTokens, currentTrip: currentTrip });
+        docRef.set({ players: defaultPlayers, poolHistory: importedHistory, venue: venue, confirmed: confirmed, sinAuto: sinAuto, enCamino: enCamino, arrived: arrived, pushTokens: pushTokens, currentTrip: currentTrip, suplentes: suplentes, suplentesViaje: suplentesViaje });
       }
       var sigSnapshot = tripSig(currentTrip);
       var viajeCambioEnLaBase = sigSnapshot !== lastSnapshotTripSig;
