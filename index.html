@@ -199,15 +199,12 @@
   /* ---------- Suplentes ---------- */
   .sup-wrap { position: relative; margin: 0 0 4px; }
   .sup-trigger { width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 12px 14px; font-size: 14px; }
-  .sup-trigger .ti { font-size: 16px; }
-  .sup-trigger .sup-chevron { font-size: 14px; opacity: 0.6; }
-  .sup-catcher { position: fixed; inset: 0; z-index: 40; }
+  .sup-trigger .sup-chevron { display: flex; opacity: 0.6; }
   .sup-menu {
-    position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 45;
+    margin-top: 6px;
     background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: var(--radius);
-    box-shadow: 0 14px 30px rgba(0,0,0,0.55); overflow: hidden;
+    overflow: hidden;
   }
-  .sup-list { max-height: 264px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
   .sup-item {
     flex: 1 1 0; width: 0; min-width: 0; overflow: hidden; display: flex; align-items: center; gap: 10px; background: none; border: none;
     color: var(--text-primary); font-family: inherit; font-size: 15px; font-weight: 600; text-align: left;
@@ -215,14 +212,12 @@
   }
   .sup-item:active { background: rgba(255,255,255,0.06); }
   .sup-add { width: 100%; color: var(--accent); padding: 14px 16px; }
-  .sup-add .ti { font-size: 18px; }
   .sup-row { display: flex; align-items: stretch; border-top: 1px solid var(--border); }
   .sup-text { display: flex; flex-direction: column; flex: 1; min-width: 0; overflow: hidden; }
   .sup-name, .sup-addr { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sup-addr { font-size: 12px; font-weight: 400; color: var(--text-secondary); margin-top: 2px; }
-  .sup-check { margin-left: auto; color: var(--success); font-size: 18px; flex-shrink: 0; }
+  .sup-check { margin-left: auto; color: var(--success); flex-shrink: 0; display: flex; }
   .sup-icon-btn { flex-shrink: 0; min-width: 44px; justify-content: center; background: none; border: none; color: var(--text-secondary); padding: 0 12px; cursor: pointer; display: flex; align-items: center; font-size: 20px; -webkit-appearance: none; appearance: none; }
-  .sup-icon-btn .ti { display: block; line-height: 1; }
   .sup-icon-btn.danger { color: var(--danger); padding-right: 16px; }
   .sup-empty { margin: 0; padding: 12px 16px 14px; font-size: 13px; color: var(--text-tertiary); border-top: 1px solid var(--border); }
 </style>
@@ -1271,7 +1266,45 @@ function viajeDesactualizado(){
   return titularesCambiaron() || suplentesCambiaron();
 }
 
-function toggleMenuSuplentes(){ suplenteMenuOpen = !suplenteMenuOpen; render(); }
+/* Iconos en SVG, igual que el resto de la app (la fuente de iconos no carga en el iPhone) */
+function icoSup(nombre, size){
+  var trazos = {
+    "plus": '<path d="M12 5v14"/><path d="M5 12h14"/>',
+    "chevron-down": '<path d="M6 9l6 6l6 -6"/>',
+    "chevron-up": '<path d="M6 15l6 -6l6 6"/>',
+    "pencil": '<path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"/><path d="M13.5 6.5l4 4"/>',
+    "trash": '<path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/>',
+    "check": '<path d="M5 12l5 5l10 -10"/>',
+    "x": '<path d="M18 6l-12 12"/><path d="M6 6l12 12"/>',
+    "alert": '<path d="M12 9v4"/><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z"/><path d="M12 16h.01"/>'
+  };
+  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block;flex-shrink:0;">' + (trazos[nombre] || "") + '</svg>';
+}
+
+function toggleMenuSuplentes(){
+  suplenteMenuOpen = !suplenteMenuOpen;
+  render();
+  if (suplenteMenuOpen) mostrarMenuSuplentes();
+}
+/* Si el menu queda tapado por la barra de abajo, baja la pagina lo justo */
+function mostrarMenuSuplentes(){
+  setTimeout(function(){
+    var m = document.querySelector(".sup-menu");
+    if (!m || !m.getBoundingClientRect) return;
+    var limite = window.innerHeight - 130;
+    var r = m.getBoundingClientRect();
+    if (r.bottom > limite) window.scrollBy({ top: Math.min(r.bottom - limite, r.top - 80), behavior: "smooth" });
+  }, 30);
+}
+/* Tocar fuera del menu lo cierra */
+if (document.addEventListener){
+  document.addEventListener("click", function(e){
+    if (!suplenteMenuOpen || !e.target || !e.target.closest) return;
+    if (e.target.closest(".sup-wrap") || e.target.closest(".modal-sheet")) return;
+    suplenteMenuOpen = false;
+    render();
+  });
+}
 function cerrarMenuSuplentes(){ suplenteMenuOpen = false; render(); }
 
 function abrirNuevoSuplente(){
@@ -1297,6 +1330,7 @@ function cerrarModalSuplente(){
   suplenteError = "";
   suplenteMenuOpen = true; // vuelve al menu de donde vino
   render();
+  mostrarMenuSuplentes();
 }
 
 function guardarSuplente(){
@@ -1337,6 +1371,7 @@ function guardarSuplente(){
       }
     });
     showToast(editId ? "Suplente actualizado" : "Suplente guardado");
+    mostrarMenuSuplentes();
   }
 
   if (mismaDireccion) terminar(null);
@@ -1390,6 +1425,7 @@ function refrescarFechaAutomatica(){
 }
 
 function setTab(t){
+  var cambioDePestana = t !== activeTab;
   activeTab = t;
   suplenteMenuOpen = false;
   if (t === "semana"){
@@ -1397,6 +1433,12 @@ function setTab(t){
     if (!result) tryLoadExistingTrip(false);
   }
   render();
+  // Cada pestaña abre arriba, no donde habia quedado la anterior
+  if (cambioDePestana){
+    if (window.scrollTo) window.scrollTo(0, 0);
+    if (document.documentElement) document.documentElement.scrollTop = 0;
+    if (document.body) document.body.scrollTop = 0;
+  }
 }
 function setMatchDate(v){ matchDateISO = v; matchDateManual = true; result = null; weekSaved = false; render(); }
 function setCarsOverride(v){ carsOverride = v; render(); }
@@ -1771,7 +1813,7 @@ function suplenteCardMini(s){
       '<div class="avatar" style="background:var(--bg-elevated-2);color:var(--text-secondary);">' + escHtml(s.name.slice(0,2).toUpperCase()) + '</div>' +
       '<div><p class="name">' + escHtml(s.name) + '</p><p class="subtext" style="cursor:default;">Suplente</p></div>' +
     '</div>' +
-    '<button onclick="quitarSuplenteDelViaje(\'' + s.id + '\')" aria-label="Quitar a ' + escHtml(s.name) + ' del pool" style="border:none;background:none;padding:4px;cursor:pointer;color:var(--text-tertiary);display:flex;align-items:center;"><i class="ti ti-x" style="font-size:22px;"></i></button>' +
+    '<button onclick="quitarSuplenteDelViaje(\'' + s.id + '\')" aria-label="Quitar a ' + escHtml(s.name) + ' del pool" style="border:none;background:none;padding:4px;cursor:pointer;color:var(--text-tertiary);display:flex;align-items:center;">' + icoSup("x", 22) + '</button>' +
   '</div>';
 }
 
@@ -1779,12 +1821,11 @@ function menuSuplentes(){
   var enPool = idsSuplentesSemana();
   var html = '<div class="sup-wrap">';
   html += '<button class="btn-secondary sup-trigger" onclick="toggleMenuSuplentes()" aria-expanded="' + (suplenteMenuOpen ? "true" : "false") + '">' +
-    '<i class="ti ti-plus"></i>Suplente<i class="ti ti-chevron-' + (suplenteMenuOpen ? "up" : "down") + ' sup-chevron"></i>' +
+    icoSup("plus", 16) + 'Suplente<span class="sup-chevron">' + icoSup(suplenteMenuOpen ? "chevron-up" : "chevron-down", 14) + '</span>' +
   '</button>';
   if (suplenteMenuOpen){
-    html += '<div class="sup-catcher" onclick="cerrarMenuSuplentes()"></div>';
     html += '<div class="sup-menu">';
-    html += '<button class="sup-item sup-add" onclick="abrirNuevoSuplente()"><i class="ti ti-plus"></i>Agregar suplente</button>';
+    html += '<button class="sup-item sup-add" onclick="abrirNuevoSuplente()">' + icoSup("plus", 18) + 'Agregar suplente</button>';
     var lista = (suplentes || []).slice().sort(function(a, b){ return a.name.localeCompare(b.name, "es"); });
     if (lista.length){
       html += '<div class="sup-list">';
@@ -1793,10 +1834,10 @@ function menuSuplentes(){
         html += '<div class="sup-row">' +
           '<button class="sup-item" onclick="agregarSuplenteAlViaje(\'' + s.id + '\')">' +
             '<span class="sup-text"><span class="sup-name">' + escHtml(s.name) + '</span><span class="sup-addr">' + escHtml(s.address) + '</span></span>' +
-            (yaEsta ? '<i class="ti ti-check sup-check" aria-label="Ya está en el pool"></i>' : '') +
+            (yaEsta ? '<span class="sup-check" aria-label="Ya está en el pool">' + icoSup("check", 18) + '</span>' : '') +
           '</button>' +
-          '<button class="sup-icon-btn" onclick="abrirEditarSuplente(\'' + s.id + '\')" aria-label="Editar a ' + escHtml(s.name) + '"><i class="ti ti-pencil"></i></button>' +
-          '<button class="sup-icon-btn danger" onclick="eliminarSuplente(\'' + s.id + '\')" aria-label="Borrar a ' + escHtml(s.name) + '"><i class="ti ti-trash"></i></button>' +
+          '<button class="sup-icon-btn" onclick="abrirEditarSuplente(\'' + s.id + '\')" aria-label="Editar a ' + escHtml(s.name) + '">' + icoSup("pencil", 20) + '</button>' +
+          '<button class="sup-icon-btn danger" onclick="eliminarSuplente(\'' + s.id + '\')" aria-label="Borrar a ' + escHtml(s.name) + '">' + icoSup("trash", 20) + '</button>' +
         '</div>';
       });
       html += '</div>';
@@ -1860,7 +1901,7 @@ function renderSemana(){
   }
   if (result && result.cars){
     if (!weekSaved && viajeDesactualizado()){
-      html += '<p style="font-size:13px;color:var(--warning);margin:14px 0 0;display:flex;align-items:center;gap:6px;"><i class="ti ti-alert-triangle"></i>Cambió quién va esta semana. Designá de nuevo para rearmar los autos.</p>';
+      html += '<p style="font-size:13px;color:var(--warning);margin:14px 0 0;display:flex;align-items:center;gap:6px;">' + icoSup("alert", 16) + 'Cambió quién va esta semana. Designá de nuevo para rearmar los autos.</p>';
     }
     var carsToShow = getMyCars(result.cars);
     var anyLive = carsToShow.some(function(c){ return c.route && c.route.live; });
